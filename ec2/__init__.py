@@ -1,4 +1,4 @@
-from subfish.base import AwsBase
+from subfish import AwsBase
 from ipaddress import ip_network
 
 class AwsEc2(AwsBase):
