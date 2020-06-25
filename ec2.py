@@ -1,11 +1,17 @@
-from subfish import AwsBase
+from subfish.base import AwsBase
 from ipaddress import ip_network
+from os import listdir
+import re
+from botocore.exceptions import ClientError
+
+RELATIVE_SG_AUTHORIZATIONS="sg_authorizations"
 
 class AwsEc2(AwsBase):
 
-    def __init__(self, path):
+    def __init__(self, path, ec2_path="."):
         super().__init__(path)
         self.client = self.session.create_client('ec2')
+        self.sg_authorization_path = "{}/{}".format(ec2_path,RELATIVE_SG_AUTHORIZATIONS)
 
     def get_available_cidr_block(self):
         cidr_block = self['Vpc']['CidrBlock']
@@ -196,7 +202,7 @@ class AwsEc2(AwsBase):
             DestinationCidrBlock='0.0.0.0/0',
             NatGatewayId=ngw_id,
             RouteTableId=rt_id)
-        self.sleep
+        self.sleep()
 
     def refresh_nat_gateways(self):
         vpc_id = self['Vpc']['VpcId']
@@ -220,3 +226,54 @@ class AwsEc2(AwsBase):
             self.save()
         except KeyError:
             return 0
+
+
+    def create_security_group(self, sg_name):
+        vpc_id = self['Vpc']['VpcId']
+        try:
+            self.client.create_security_group(
+                Description=sg_name,
+                GroupName=sg_name,
+                VpcId=vpc_id)
+            self.sleep()
+        except ClientError as c:
+            if c.response['Error']['Code'] == 'InvalidGroup.Duplicate':
+                pass
+            else:
+                raise
+        self.refresh_security_groups()
+
+    def refresh_security_groups(self):
+        vpc_id = self['Vpc']['VpcId']
+        self['SecurityGroups'] = self.client.describe_security_groups(
+            Filters=[{'Name': 'vpc-id', 'Values': [vpc_id]}])['SecurityGroups']
+        self.save()
+
+    def authorize_security_group_policies(self, sg_name, jinja_vars):
+        sg_id = next(sg['GroupId'] for sg in self['SecurityGroups'] \
+            if sg['GroupName'] == sg_name)
+        if "{}_ingress.json.j2".format(sg_name) in listdir(self.sg_authorization_path):
+            f = open("{}/{}_ingress.json.j2".format(self.sg_authorization_path, sg_name))
+            data = f.read()
+            self.client.authorize_security_group_ingress(
+                GroupId=sg_id,
+                IpPermissions=json.loads(Template(data).render(jinja_vars)))
+        if "{}_egress.json.j2".format(sg_name) in listdir(self.sg_authorization_path):
+            f = open("{}/{}_egress.json.j2".format(self.sg_authorization_path, sg_name))
+            data = f.read()
+            self.client.authorize_security_group_egress(
+                GroupId=sg_id,
+                IpPermissions=json.loads(Template(data).render(jinja_vars)))
+        self.refresh_security_groups()
+
+    def delete_security_groups(self):
+        for sg in [s for s in self['SecurityGroups'] if s['GroupName'] != 'default']:
+            if sg['IpPermissions']:
+                self.client.revoke_security_group_ingress(
+                    GroupId=sg['GroupId'],
+                    IpPermissions=sg['IpPermissions'])
+            if sg['IpPermissionsEgress']:
+                self.client.revoke_security_group_egress(
+                    GroupId=sg['GroupId'],
+                    IpPermissions=sg['IpPermissionsEgress'])
+                self.client.delete_security_group(GroupId=sg['GroupId'])

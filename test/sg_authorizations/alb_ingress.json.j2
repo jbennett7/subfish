@@ -1,0 +1,23 @@
+[
+     {
+         "FromPort": 443,
+         "ToPort": 443,
+         "IpProtocol": "tcp",
+         "IpRanges": [
+             {
+                 "Description": "Allow inbound access.",
+                 "CidrIp": "0.0.0.0/0"
+             }
+         ]
+     },{
+         "FromPort": 80,
+         "ToPort": 80,
+         "IpProtocol": "tcp",
+         "UserIdGroupPairs": [
+             {
+                 "Description": "Allow inbound access for control plane.",
+                 "GroupId": "{{ control_sg_id }}"
+             }
+         ]
+     }
+]
