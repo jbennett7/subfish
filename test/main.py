@@ -10,12 +10,13 @@ PATH = './.aws_load.yml'
 #aws = AwsEc2(PATH)
 #aws = AwsIam(PATH)
 aws = AwsEks(path=PATH)
-print(dir(aws))
+#print(dir(aws))
 aws.create_vpc_environment()
+aws.create_affinity_group()
 print("\n\n")
 print(aws)
 print("\n\n")
-#aws.destroy_vpc_environment()
+aws.destroy_vpc_environment()
 
 
 

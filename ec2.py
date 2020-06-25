@@ -77,10 +77,18 @@ class AwsEc2(AwsBase):
         vpc_id = self['Vpc']['VpcId']
         rt_id = self.ec2_client.create_route_table(VpcId=vpc_id)['RouteTable']['RouteTableId']
 #       waiter = get_waiter('router_exists')
-        self.sleep()
-        self.ec2_client.create_tags(
-            Resources=[rt_id],
-            Tags=[{'Key': 'affinity_group', 'Value': str(affinity_group)}])
+        i=.1
+        while True:
+            try:
+                self.ec2_client.create_tags(
+                    Resources=[rt_id],
+                    Tags=[{'Key': 'affinity_group', 'Value': str(affinity_group)}])
+            except ClientError as c:
+                if c.response['Error']['Code'] == 'InvalidRouteTableID.NotFound':
+                    self.sleep(i)
+                    i=i+.1
+                    continue
+            break
         self.refresh_route_tables()
 
     def refresh_route_tables(self):
@@ -121,6 +129,7 @@ class AwsEc2(AwsBase):
             VpcId=vpc_id,
             AvailabilityZone=az,
             CidrBlock=cidr)['Subnet']['SubnetId']
+        self.sleep()
         waiter = self.ec2_client.get_waiter('subnet_available')
         waiter.wait(SubnetIds=[subnet_id])
         self.ec2_client.create_tags(
@@ -267,13 +276,26 @@ class AwsEc2(AwsBase):
         self.refresh_security_groups()
 
     def delete_security_groups(self):
-        for sg in [s for s in self['SecurityGroups'] if s['GroupName'] != 'default']:
-            if sg['IpPermissions']:
-                self.ec2_client.revoke_security_group_ingress(
-                    GroupId=sg['GroupId'],
-                    IpPermissions=sg['IpPermissions'])
-            if sg['IpPermissionsEgress']:
-                self.ec2_client.revoke_security_group_egress(
-                    GroupId=sg['GroupId'],
-                    IpPermissions=sg['IpPermissionsEgress'])
-                self.ec2_client.delete_security_group(GroupId=sg['GroupId'])
+        try:
+            for sg in [s for s in self['SecurityGroups'] if s['GroupName'] != 'default']:
+                if sg['IpPermissions']:
+                    self.ec2_client.revoke_security_group_ingress(
+                        GroupId=sg['GroupId'],
+                        IpPermissions=sg['IpPermissions'])
+                if sg['IpPermissionsEgress']:
+                    self.ec2_client.revoke_security_group_egress(
+                        GroupId=sg['GroupId'],
+                        IpPermissions=sg['IpPermissionsEgress'])
+                    self.ec2_client.delete_security_group(GroupId=sg['GroupId'])
+            del(self['SecurityGroups'])
+        except ClientError as c:
+            if c.response['Error']['Code'] == 'InvalidGroup.NotFound':
+                pass
+            else:
+                raise
+        except KeyError as k:
+            if k.args[0] == 'SecurityGroups':
+                pass
+            else:
+                raise
+        self.save()

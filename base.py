@@ -28,5 +28,6 @@ class AwsBase(dict):
         with open(self.path, 'w') as f:
             yaml.safe_dump(dict(self), f, default_flow_style=False)
 
-    def sleep(self, s=.2):
-        sleep(s)
+    def sleep(self, s=1):
+        i = .1*s
+        sleep(i)

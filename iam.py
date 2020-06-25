@@ -22,35 +22,33 @@ class AwsIam(AwsBase):
             return 0
 
     def create_iam_role(self, role_name, policy_attachments):
-        if 'Roles' not in self:
-            self['Roles'] = []
         try:
             role = next(r for r in self['Roles'] if r['RoleName'] == role_name)
+            print("NOOOO")
             try:
                 arole = next(r['RoleName'] for r in \
                     self.iam_client.list_roles()['Roles'] \
                     if r['RoleName'] == role_name)
             except StopIteration:
-                print("B")
                 self['Roles'].remove(role)
                 raise StopIteration
-        except StopIteration:
-            print("C")
+        except (StopIteration, KeyError):
             pfile = open("{}/{}.json".format(self.assume_policy_path, role_name))
             assume_policy = pfile.read().replace("\n", " ")
             pfile.close()
             try:
-                self.iam_client.create_role(
+                self.list_append('Roles', self.iam_client.create_role(
                     RoleName=role_name,
-                    AssumeRolePolicyDocument=assume_policy)
+                    AssumeRolePolicyDocument=assume_policy)['Role'])
             except ClientError as c:
                 if c.response['Error']['Code'] == 'EntityAlreadyExists':
-                    self['Roles'].append(self.iam_client.get_role(RoleName=role_name)['Role'])
+                    self.list_append(
+                        k='Roles',
+                        v=self.iam_client.get_role(RoleName=role_name)['Role'])
                 else:
                     raise
         for policy in policy_attachments:
             self.iam_client.attach_role_policy(RoleName=role_name, PolicyArn=policy)
-        print("F")
         self.save()
 
     def delete_iam_roles(self):
