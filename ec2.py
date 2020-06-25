@@ -9,8 +9,8 @@ RELATIVE_SG_AUTHORIZATIONS="sg_authorizations"
 class AwsEc2(AwsBase):
 
     def __init__(self, path, ec2_path="."):
-        super().__init__(path)
-        self.client = self.session.create_client('ec2')
+        super().__init__(path=path)
+        self.ec2_client = self.session.create_client('ec2')
         self.sg_authorization_path = "{}/{}".format(ec2_path,RELATIVE_SG_AUTHORIZATIONS)
 
     def get_available_cidr_block(self):
@@ -27,8 +27,8 @@ class AwsEc2(AwsBase):
     def get_next_az(self, affinity_group=0):
         vpc_id = self['Vpc']['VpcId']
         az_dict = {a['ZoneName']: 0 for a in \
-            self.client.describe_availability_zones()['AvailabilityZones']}
-        for az in [a['AvailabilityZone'] for a in self.client.describe_subnets(Filters=[
+            self.ec2_client.describe_availability_zones()['AvailabilityZones']}
+        for az in [a['AvailabilityZone'] for a in self.ec2_client.describe_subnets(Filters=[
             {'Name': 'vpc-id', 'Values': [vpc_id]} ])['Subnets']]:
                 az_dict[az] = az_dict[az] + 1
         min_value = min(az_dict.values())
@@ -51,41 +51,41 @@ class AwsEc2(AwsBase):
         if 'Vpc' in self:
             self.refresh_vpc()
             return 0
-        vpc_id = self.client.create_vpc(
+        vpc_id = self.ec2_client.create_vpc(
             CidrBlock = cidr_block)\
                 ['Vpc']['VpcId']
-        waiter = self.client.get_waiter('vpc_exists')
+        waiter = self.ec2_client.get_waiter('vpc_exists')
         waiter.wait(VpcIds=[vpc_id])
-        waiter = self.client.get_waiter('vpc_available')
+        waiter = self.ec2_client.get_waiter('vpc_available')
         waiter.wait(VpcIds=[vpc_id])
-        self['Vpc'] = next(vpc for vpc in self.client.describe_vpcs(VpcIds=[vpc_id])['Vpcs'])
+        self['Vpc'] = next(vpc for vpc in self.ec2_client.describe_vpcs(VpcIds=[vpc_id])['Vpcs'])
         self.save()
 
     def refresh_vpc(self):
         vpc_id = self['Vpc']['VpcId']
-        self['Vpc'] = next(vpc for vpc in self.client.describe_vpcs(VpcIds=[vpc_id])['Vpcs'])
+        self['Vpc'] = next(vpc for vpc in self.ec2_client.describe_vpcs(VpcIds=[vpc_id])['Vpcs'])
         self.save()
 
     def delete_vpc(self):
         vpc_id = self['Vpc']['VpcId']
-        res = self.client.delete_vpc(VpcId=vpc_id)
+        res = self.ec2_client.delete_vpc(VpcId=vpc_id)
         del(self['Vpc'])
         self.save()
 
 
     def create_route_table(self, affinity_group=0):
         vpc_id = self['Vpc']['VpcId']
-        rt_id = self.client.create_route_table(VpcId=vpc_id)['RouteTable']['RouteTableId']
+        rt_id = self.ec2_client.create_route_table(VpcId=vpc_id)['RouteTable']['RouteTableId']
 #       waiter = get_waiter('router_exists')
         self.sleep()
-        self.client.create_tags(
+        self.ec2_client.create_tags(
             Resources=[rt_id],
             Tags=[{'Key': 'affinity_group', 'Value': str(affinity_group)}])
         self.refresh_route_tables()
 
     def refresh_route_tables(self):
         vpc_id = self['Vpc']['VpcId']
-        self['RouteTables'] = self.client.describe_route_tables(Filters=[
+        self['RouteTables'] = self.ec2_client.describe_route_tables(Filters=[
             {'Name': 'vpc-id', 'Values': [vpc_id]},
             {'Name': 'tag-key', 'Values': ['affinity_group']}])['RouteTables']
         self.save()
@@ -95,7 +95,7 @@ class AwsEc2(AwsBase):
             for t in rt['Tags'] if t['Key'] == 'affinity_group' \
             and t['Value'] == str(affinity_group))
         for s in self.get_af_subnets(affinity_group):
-            self.client.associate_route_table(RouteTableId=rt_id, SubnetId=s)
+            self.ec2_client.associate_route_table(RouteTableId=rt_id, SubnetId=s)
         self.sleep()
         self.refresh_route_tables()
 
@@ -104,9 +104,9 @@ class AwsEc2(AwsBase):
         try:
             for rt in self['RouteTables']:
                 for association in rt['Associations']:
-                    self.client.disassociate_route_table(
+                    self.ec2_client.disassociate_route_table(
                         AssociationId=association['RouteTableAssociationId'])
-                self.client.delete_route_table(RouteTableId=rt['RouteTableId'])
+                self.ec2_client.delete_route_table(RouteTableId=rt['RouteTableId'])
             del(self['RouteTables'])
             self.save()
         except KeyError:
@@ -117,26 +117,26 @@ class AwsEc2(AwsBase):
         vpc_id = self['Vpc']['VpcId']
         az = self.get_next_az(affinity_group)
         cidr = self.get_available_cidr_block()
-        subnet_id = self.client.create_subnet(
+        subnet_id = self.ec2_client.create_subnet(
             VpcId=vpc_id,
             AvailabilityZone=az,
             CidrBlock=cidr)['Subnet']['SubnetId']
-        waiter = self.client.get_waiter('subnet_available')
+        waiter = self.ec2_client.get_waiter('subnet_available')
         waiter.wait(SubnetIds=[subnet_id])
-        self.client.create_tags(
+        self.ec2_client.create_tags(
             Resources=[subnet_id],
             Tags=[{'Key': 'affinity_group', 'Value': str(affinity_group)}])
         self.refresh_subnets()
 
     def refresh_subnets(self):
         vpc_id = self['Vpc']['VpcId']
-        self['Subnets'] = self.client.describe_subnets(Filters=[
+        self['Subnets'] = self.ec2_client.describe_subnets(Filters=[
             {'Name': 'vpc-id', 'Values': [vpc_id]}])['Subnets']
         self.save()
 
     def delete_subnets(self):
         try:
-            [self.client.delete_subnet(SubnetId=s['SubnetId']) for s in self['Subnets']]
+            [self.ec2_client.delete_subnet(SubnetId=s['SubnetId']) for s in self['Subnets']]
             del(self['Subnets'])
             self.save()
         except KeyError:
@@ -147,16 +147,16 @@ class AwsEc2(AwsBase):
         if 'InternetGateway' in self:
             return 0
         vpc_id = self['Vpc']['VpcId']
-        igw_id = self.client.create_internet_gateway()['InternetGateway']['InternetGatewayId']
+        igw_id = self.ec2_client.create_internet_gateway()['InternetGateway']['InternetGatewayId']
         self.sleep()
-        self.client.attach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
+        self.ec2_client.attach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
         rt_id = self.get_af_rt(affinity_group)
-        self.client.create_route(
+        self.ec2_client.create_route(
             DestinationCidrBlock='0.0.0.0/0',
             GatewayId=igw_id,
             RouteTableId=rt_id)
         self.sleep()
-        self.client.create_tags(
+        self.ec2_client.create_tags(
             Resources=[igw_id],
             Tags=[{'Key': 'affinity_group', 'Value': str(affinity_group)}])
         self.refresh_route_tables()
@@ -165,7 +165,7 @@ class AwsEc2(AwsBase):
     def refresh_internet_gateway(self):
         vpc_id = self['Vpc']['VpcId']
         self['InternetGateway'] = next(igw for igw in \
-            self.client.describe_internet_gateways(Filters=[
+            self.ec2_client.describe_internet_gateways(Filters=[
                 {'Name': 'attachment.vpc-id', 'Values': [vpc_id]}])['InternetGateways'])
         self.save()
 
@@ -173,9 +173,9 @@ class AwsEc2(AwsBase):
         vpc_id = self['Vpc']['VpcId']
         try:
             igw_id = self['InternetGateway']['InternetGatewayId']
-            self.client.detach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
+            self.ec2_client.detach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
             self.sleep()
-            self.client.delete_internet_gateway(InternetGatewayId=igw_id)
+            self.ec2_client.delete_internet_gateway(InternetGatewayId=igw_id)
             del(self['InternetGateway'])
             self.save()
         except KeyError:
@@ -183,14 +183,14 @@ class AwsEc2(AwsBase):
 
 
     def create_nat_gateway(self, affinity_group=0):
-        eipalloc_id = self.client.allocate_address(Domain='vpc')['AllocationId']
+        eipalloc_id = self.ec2_client.allocate_address(Domain='vpc')['AllocationId']
         subnet_id = self.get_af_subnets(affinity_group)[0]
-        ngw_id = self.client.create_nat_gateway(AllocationId=eipalloc_id, SubnetId=subnet_id)\
+        ngw_id = self.ec2_client.create_nat_gateway(AllocationId=eipalloc_id, SubnetId=subnet_id)\
             ['NatGateway']['NatGatewayId']
         self.sleep()
-        waiter = self.client.get_waiter('nat_gateway_available')
+        waiter = self.ec2_client.get_waiter('nat_gateway_available')
         waiter.wait(NatGatewayIds=[ngw_id])
-        self.client.create_tags(
+        self.ec2_client.create_tags(
             Resources=[ngw_id],
             Tags=[{'Key': 'affinity_group', 'Value': str(affinity_group)}])
         self.refresh_nat_gateways()
@@ -198,7 +198,7 @@ class AwsEc2(AwsBase):
     def create_nat_default_route(self, rt_affinity_group, nat_affinity_group=0):
         ngw_id = self.get_af_ngw(nat_affinity_group)
         rt_id = self.get_af_rt(rt_affinity_group)
-        self.client.create_route(
+        self.ec2_client.create_route(
             DestinationCidrBlock='0.0.0.0/0',
             NatGatewayId=ngw_id,
             RouteTableId=rt_id)
@@ -206,7 +206,7 @@ class AwsEc2(AwsBase):
 
     def refresh_nat_gateways(self):
         vpc_id = self['Vpc']['VpcId']
-        self['NatGateways'] = self.client.describe_nat_gateways(Filters=[
+        self['NatGateways'] = self.ec2_client.describe_nat_gateways(Filters=[
             {'Name': 'vpc-id', 'Values': [vpc_id]}])['NatGateways']
         self.save()
 
@@ -216,12 +216,12 @@ class AwsEc2(AwsBase):
             for n in self['NatGateways']:
                 for a in n['NatGatewayAddresses']:
                     eipalloc_ids.append(a['AllocationId'])
-                self.client.delete_nat_gateway(NatGatewayId=n['NatGatewayId'])
+                self.ec2_client.delete_nat_gateway(NatGatewayId=n['NatGatewayId'])
                 #Create a waiter
-                while self.client.describe_nat_gateways(NatGatewayIds=[n['NatGatewayId']])\
+                while self.ec2_client.describe_nat_gateways(NatGatewayIds=[n['NatGatewayId']])\
                     ['NatGateways'][0]['State'] != 'deleted': self.sleep(5)
             for a in eipalloc_ids:
-                self.client.release_address(AllocationId=a)
+                self.ec2_client.release_address(AllocationId=a)
             del(self['NatGateways'])
             self.save()
         except KeyError:
@@ -231,7 +231,7 @@ class AwsEc2(AwsBase):
     def create_security_group(self, sg_name):
         vpc_id = self['Vpc']['VpcId']
         try:
-            self.client.create_security_group(
+            self.ec2_client.create_security_group(
                 Description=sg_name,
                 GroupName=sg_name,
                 VpcId=vpc_id)
@@ -245,7 +245,7 @@ class AwsEc2(AwsBase):
 
     def refresh_security_groups(self):
         vpc_id = self['Vpc']['VpcId']
-        self['SecurityGroups'] = self.client.describe_security_groups(
+        self['SecurityGroups'] = self.ec2_client.describe_security_groups(
             Filters=[{'Name': 'vpc-id', 'Values': [vpc_id]}])['SecurityGroups']
         self.save()
 
@@ -255,13 +255,13 @@ class AwsEc2(AwsBase):
         if "{}_ingress.json.j2".format(sg_name) in listdir(self.sg_authorization_path):
             f = open("{}/{}_ingress.json.j2".format(self.sg_authorization_path, sg_name))
             data = f.read()
-            self.client.authorize_security_group_ingress(
+            self.ec2_client.authorize_security_group_ingress(
                 GroupId=sg_id,
                 IpPermissions=json.loads(Template(data).render(jinja_vars)))
         if "{}_egress.json.j2".format(sg_name) in listdir(self.sg_authorization_path):
             f = open("{}/{}_egress.json.j2".format(self.sg_authorization_path, sg_name))
             data = f.read()
-            self.client.authorize_security_group_egress(
+            self.ec2_client.authorize_security_group_egress(
                 GroupId=sg_id,
                 IpPermissions=json.loads(Template(data).render(jinja_vars)))
         self.refresh_security_groups()
@@ -269,11 +269,11 @@ class AwsEc2(AwsBase):
     def delete_security_groups(self):
         for sg in [s for s in self['SecurityGroups'] if s['GroupName'] != 'default']:
             if sg['IpPermissions']:
-                self.client.revoke_security_group_ingress(
+                self.ec2_client.revoke_security_group_ingress(
                     GroupId=sg['GroupId'],
                     IpPermissions=sg['IpPermissions'])
             if sg['IpPermissionsEgress']:
-                self.client.revoke_security_group_egress(
+                self.ec2_client.revoke_security_group_egress(
                     GroupId=sg['GroupId'],
                     IpPermissions=sg['IpPermissionsEgress'])
-                self.client.delete_security_group(GroupId=sg['GroupId'])
+                self.ec2_client.delete_security_group(GroupId=sg['GroupId'])

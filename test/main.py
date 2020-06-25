@@ -4,9 +4,22 @@ path.append('/'.join(getcwd().split('/')[:-2]))
 
 from subfish.ec2 import AwsEc2
 from subfish.iam import AwsIam
+from subfish.eks import AwsEks
 PATH = './.aws_load.yml'
 
+#aws = AwsEc2(PATH)
 #aws = AwsIam(PATH)
+aws = AwsEks(path=PATH)
+print(dir(aws))
+aws.create_vpc_environment()
+print("\n\n")
+print(aws)
+print("\n\n")
+#aws.destroy_vpc_environment()
+
+
+
+
 #pattachments = [aws.get_iam_role_policy_arn("AmazonEKSClusterPolicy")]
 #aws.create_iam_role(role_name="EKSClusterRole", policy_attachments=pattachments)
 #aws.delete_iam_roles()
@@ -14,12 +27,12 @@ PATH = './.aws_load.yml'
 
 
 
-aws = AwsEc2(PATH)
-aws.create_vpc()
-aws.create_security_group('bastion')
-print(aws)
-aws.delete_security_groups()
-aws.delete_vpc()
+
+#aws.create_vpc()
+#aws.create_security_group('bastion')
+#print(aws)
+#aws.delete_security_groups()
+#aws.delete_vpc()
 
 #aws.create_route_table()
 #aws.create_subnet()

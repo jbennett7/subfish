@@ -1,0 +1,33 @@
+[
+     {
+         "FromPort": -1,
+         "ToPort": -1,
+         "IpProtocol": "-1",
+         "UserIdGroupPairs": [
+             {
+                 "Description": "Allow inter-worker communication.",
+                 "GroupId": "{{ worker_sg_id }}"
+             }
+         ]
+     },{
+         "FromPort": 443,
+         "ToPort": 443,
+         "IpProtocol": "tcp",
+         "UserIdGroupPairs": [
+             {
+                 "Description": "Allow inbound access for control plane.",
+                 "GroupId": "{{ control_sg_id }}"
+             }
+         ]
+     },{
+         "FromPort": 1025,
+         "ToPort": 65535,
+         "IpProtocol": "tcp",
+         "UserIdGroupPairs": [
+             {
+                 "Description": "Allow inbound access to control plane.",
+                 "GroupId": "{{ control_sg_id }}"
+             }
+         ]
+     }
+]

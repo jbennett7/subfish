@@ -1,0 +1,19 @@
+[
+    {
+        "FromPort": 443,
+        "ToPort": 443,
+        "IpProtocol": "tcp",
+        "UserIdGroupPairs": [
+            {
+                "Description": "Allow access to EKS Control plane via kubectl.",
+                "GroupId": "{{ bastion_sg_id }}"
+            },{
+                "Description": "Allow access to EKS Control plane via worker nodes.",
+                "GroupId": "{{ worker_sg_id }}"
+            },{
+                "Description": "Allow access to EKS Control via LoadBalancer.",
+                "GroupId": "{{ alb_sg_id }}"
+            }
+        ]
+    }
+]

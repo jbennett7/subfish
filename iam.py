@@ -1,4 +1,4 @@
-from subfish.base import AwsBase
+from subfish.base import AwsBase 
 from jinja2 import Template
 from os import path
 from botocore.exceptions import ClientError
@@ -8,53 +8,61 @@ RELATIVE_ROLE_POLICIES="role_policies"
 
 class AwsIam(AwsBase):
 
-    def __init__(self, path, iam_path="."):
-        super().__init__(path)
-        self.client = self.session.create_client('iam')
+    def __init__(self, path, iam_path=".", **kwargs):
+        super().__init__(path=path)
+        self.iam_client = self.session.create_client('iam')
         self.assume_policy_path = "/".join([iam_path, RELATIVE_ASSUME_ROLE_POLICIES])
         self.role_policy_path = "/".join([iam_path, RELATIVE_ROLE_POLICIES])
 
     def get_iam_role_policy_arn(self, policy_name):
         try:
-            return next(p['Arn'] for p in self.client.list_policies()['Policies'] \
+            return next(p['Arn'] for p in self.iam_client.list_policies()['Policies'] \
                 if p['PolicyName'] == policy_name)
         except StopIteration:
             return 0
 
     def create_iam_role(self, role_name, policy_attachments):
+        if 'Roles' not in self:
+            self['Roles'] = []
         try:
             role = next(r for r in self['Roles'] if r['RoleName'] == role_name)
             try:
                 arole = next(r['RoleName'] for r in \
-                    self.client.list_roles()['Roles'] \
+                    self.iam_client.list_roles()['Roles'] \
                     if r['RoleName'] == role_name)
             except StopIteration:
+                print("B")
                 self['Roles'].remove(role)
                 raise StopIteration
         except StopIteration:
+            print("C")
             pfile = open("{}/{}.json".format(self.assume_policy_path, role_name))
             assume_policy = pfile.read().replace("\n", " ")
             pfile.close()
             try:
-                self.client.create_role(
+                self.iam_client.create_role(
                     RoleName=role_name,
                     AssumeRolePolicyDocument=assume_policy)
             except ClientError as c:
                 if c.response['Error']['Code'] == 'EntityAlreadyExists':
-                    self['Roles'].append(self.client.get_role(RoleName=role_name)['Role'])
+                    self['Roles'].append(self.iam_client.get_role(RoleName=role_name)['Role'])
                 else:
                     raise
         for policy in policy_attachments:
-            self.client.attach_role_policy(RoleName=role_name, PolicyArn=policy)
+            self.iam_client.attach_role_policy(RoleName=role_name, PolicyArn=policy)
+        print("F")
         self.save()
 
     def delete_iam_roles(self):
+        if 'Roles' not in self:
+            return 0
         roles = [r['RoleName'] for r in self['Roles']]
         for role_name in roles:
             policy_list = [p['PolicyArn'] for p in \
-                self.client.list_attached_role_policies(
+                self.iam_client.list_attached_role_policies(
                     RoleName=role_name)['AttachedPolicies']]
             for policy in policy_list:
-                self.client.detach_role_policy(RoleName=role_name, PolicyArn=policy)
-            self.client.delete_role(RoleName=role_name)
+                self.iam_client.detach_role_policy(RoleName=role_name, PolicyArn=policy)
+            self.iam_client.delete_role(RoleName=role_name)
         del(self['Roles'])
+        self.save()

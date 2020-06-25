@@ -6,10 +6,11 @@ import yaml, re
 PATH='./.aws_dict.yml'
 
 class AwsBase(dict):
-    def __init__(self, path):
+    def __init__(self, path, **kwargs):
         self.session = botocore.session.get_session()
         self.path = path
         self.load()
+        super().__init__(**kwargs)
 
     def list_append(self, k, v):
         if k not in self:
@@ -27,5 +28,5 @@ class AwsBase(dict):
         with open(self.path, 'w') as f:
             yaml.safe_dump(dict(self), f, default_flow_style=False)
 
-    def sleep(self, s=.1):
+    def sleep(self, s=.2):
         sleep(s)
