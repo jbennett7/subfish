@@ -12,14 +12,12 @@ PATH = './.aws_load.yml'
 aws = AwsEks(path=PATH)
 #print(dir(aws))
 aws.create_vpc_environment()
-aws.create_affinity_group()
-print("\n\n")
+#aws.create_affinity_group(type='public-private-access')
+#aws.create_affinity_group(type='private-public-access')
+#print("\n\n")
 print(aws)
-print("\n\n")
+#print("\n\n")
 aws.destroy_vpc_environment()
-
-
-
 
 #pattachments = [aws.get_iam_role_policy_arn("AmazonEKSClusterPolicy")]
 #aws.create_iam_role(role_name="EKSClusterRole", policy_attachments=pattachments)

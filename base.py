@@ -2,15 +2,25 @@ from botocore.exceptions import ClientError
 import botocore.session
 from time import sleep
 import yaml, re
+import logging
+
+LOGLEVEL = logging.DEBUG
 
 PATH='./.aws_dict.yml'
 
 class AwsBase(dict):
     def __init__(self, path, **kwargs):
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(LOGLEVEL)
+        self.logger.addHandler(logging.StreamHandler())
+        self.logger.debug("Executing AwsBase Constructor")
         self.session = botocore.session.get_session()
         self.path = path
         self.load()
         super().__init__(**kwargs)
+
+    def configure_logger(self):
+        pass
 
     def list_append(self, k, v):
         if k not in self:

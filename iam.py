@@ -8,8 +8,9 @@ RELATIVE_ROLE_POLICIES="role_policies"
 
 class AwsIam(AwsBase):
 
-    def __init__(self, path, iam_path=".", **kwargs):
+    def __init__(self, path, iam_path="."):
         super().__init__(path=path)
+        self.logger.debug("Executing AwsIam Constructor")
         self.iam_client = self.session.create_client('iam')
         self.assume_policy_path = "/".join([iam_path, RELATIVE_ASSUME_ROLE_POLICIES])
         self.role_policy_path = "/".join([iam_path, RELATIVE_ROLE_POLICIES])
@@ -24,7 +25,6 @@ class AwsIam(AwsBase):
     def create_iam_role(self, role_name, policy_attachments):
         try:
             role = next(r for r in self['Roles'] if r['RoleName'] == role_name)
-            print("NOOOO")
             try:
                 arole = next(r['RoleName'] for r in \
                     self.iam_client.list_roles()['Roles'] \

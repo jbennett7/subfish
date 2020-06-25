@@ -3,13 +3,15 @@ from ipaddress import ip_network
 from os import listdir
 import re
 from botocore.exceptions import ClientError
+import logging
 
 RELATIVE_SG_AUTHORIZATIONS="sg_authorizations"
 
 class AwsEc2(AwsBase):
 
-    def __init__(self, path, ec2_path="."):
+    def __init__(self, path, ec2_path=".", **kwargs):
         super().__init__(path=path)
+        self.logger.debug("Executing AwsEc2 Constructor")
         self.ec2_client = self.session.create_client('ec2')
         self.sg_authorization_path = "{}/{}".format(ec2_path,RELATIVE_SG_AUTHORIZATIONS)
 
@@ -194,8 +196,9 @@ class AwsEc2(AwsBase):
     def create_nat_gateway(self, affinity_group=0):
         eipalloc_id = self.ec2_client.allocate_address(Domain='vpc')['AllocationId']
         subnet_id = self.get_af_subnets(affinity_group)[0]
-        ngw_id = self.ec2_client.create_nat_gateway(AllocationId=eipalloc_id, SubnetId=subnet_id)\
-            ['NatGateway']['NatGatewayId']
+        ngw_id = self.ec2_client.create_nat_gateway(
+            AllocationId=eipalloc_id,
+            SubnetId=subnet_id)['NatGateway']['NatGatewayId']
         self.sleep()
         waiter = self.ec2_client.get_waiter('nat_gateway_available')
         waiter.wait(NatGatewayIds=[ngw_id])
