@@ -22,7 +22,7 @@ class AwsEks(AwsEc2, AwsIam):
                 for s in self['Subnets'] for t in s['Tags'] \
                 if t['Key'] == 'affinity_group']))+1
             self.logger.debug(
-                "Generated next_af_group_number: <{}>".format(next_af_group_number)
+                "Generated next_af_group_number: <{}>".format(next_af_group_number))
         except KeyError as k:
             if k.args[0] == 'Subnets':
                 self.logger.debug("Generating first subnet")
@@ -56,6 +56,8 @@ class AwsEks(AwsEc2, AwsIam):
 #       self.delete_nat_gateway()
 #       self.delete_internet_gateway()
 #       self.delete_iam_roles()
+#       self.refresh_route_tables()
+#       self.refresh_subnets()
 #       self.delete_route_tables()
 #       self.delete_subnets()
 #       self.delete_security_groups()
