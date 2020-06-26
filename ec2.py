@@ -6,7 +6,7 @@ import re
 from botocore.exceptions import ClientError, WaiterError
 
 RELATIVE_SG_AUTHORIZATIONS="sg_authorizations"
-LOGLEVEL='info'
+LOGLEVEL='debug'
 # General logger
 logger = Logger(__name__)
 logger.set_level(LOGLEVEL)
@@ -48,14 +48,14 @@ class AwsEc2(AwsBase):
         az_zones = self.ec2_client.describe_availability_zones()
         meta = az_zones['ResponseMetadata']
         azs = az_zones['AvailabilityZones']
-        logger_meta.debug("get_next_az::describe_availability_zones: {}".format(meta))
-        logger_data.debug("get_next_az::describe_availability_zones: {}".format(azs))
+        logger_meta.debug("get_next_az::describe_availability_zones::meta::{}".format(meta))
+        logger_data.debug("get_next_az::describe_availability_zones::data::{}".format(azs))
         az_dict = {a['ZoneName']: 0 for a in azs}
         subnets = self.ec2_client.describe_subnets(
             Filters=[{'Name': 'vpc-id', 'Values': [vpc_id]}])
         meta = subnets['ResponseMetadata']
-        logger_meta.debug("get_next_az::describe_subnets: {}".format(meta))
-        logger_data.debug("get_next_az::describe_subnets: {}".format(subnets))
+        logger_meta.debug("get_next_az::describe_subnets::meta::{}".format(meta))
+        logger_data.debug("get_next_az::describe_subnets::data::{}".format(subnets['Subnets']))
         for az in [s['AvailabilityZone'] for s in subnets['Subnets']]:
                 az_dict[az] = az_dict[az] + 1
         min_value = min(az_dict.values())
@@ -92,24 +92,32 @@ class AwsEc2(AwsBase):
             return 0
         res = self.ec2_client.create_vpc(CidrBlock = cidr_block)
         meta = res['ResponseMetadata']
-        logger.debug("create_vpc: AWS_API: create_vpc: Response {}".format(meta))
+        data = res['Vpc']
+        self['Vpc'] = data
+        logger_meta.debug("get_next_az::create_vpc::meta::{}".format(meta))
+        logger_data.debug("get_next_az::create_vpc::data::{}".format(data))
         vpc_id = res['Vpc']['VpcId']
         waiter = self.ec2_client.get_waiter('vpc_exists')
         waiter.wait(VpcIds=[vpc_id])
         waiter = self.ec2_client.get_waiter('vpc_available')
         waiter.wait(VpcIds=[vpc_id])
-        self['Vpc'] = next(vpc for vpc in self.ec2_client.describe_vpcs(VpcIds=[vpc_id])['Vpcs'])
         self.save()
 
     def refresh_vpc(self):
         logger.debug("refresh_vpc::Executing")
         vpc_id = self['Vpc']['VpcId']
-        self['Vpc'] = next(vpc for vpc in self.ec2_client.describe_vpcs(VpcIds=[vpc_id])['Vpcs'])
+        res = self.ec2_client.describe_vpcs(VpcIds=[vpc_id])
+        meta = res['ResponseMetadata']
+        data = res['Vpcs']
+        self['Vpc'] = data[0]
+        logger_meta.debug("refresh_vpc::describe_vpcs::meta::{}".format(meta))
+        logger_data.debug("refresh_vpc::describe_vpcs::data{}".format(data))
         self.save()
 
     def delete_vpc(self):
         logger.debug("delete_vpc::Executing")
         vpc_id = self['Vpc']['VpcId']
+        logger.debug("delete_vpc::Deleting::{}".format(vpc_id))
         res = self.ec2_client.delete_vpc(VpcId=vpc_id)
         del(self['Vpc'])
         self.save()
@@ -118,17 +126,24 @@ class AwsEc2(AwsBase):
     def create_route_table(self, affinity_group=0):
         logger.debug("create_route_table::Executing")
         vpc_id = self['Vpc']['VpcId']
-        rt_id = self.ec2_client.create_route_table(VpcId=vpc_id)['RouteTable']['RouteTableId']
+        res = self.ec2_client.create_route_table(VpcId=vpc_id)
+        meta = res['ResponseMetadata']
+        data = res['RouteTable']
+        logger_meta.debug("refresh_vpc::create_route_table::meta::{}".format(meta))
+        logger_data.debug("refresh_vpc::create_route_table::data{}".format(data))
+        rt_id = data['RouteTableId']
 #       waiter = get_waiter('router_exists')
         i=.1
         while True:
             try:
+                logger.debug("refresh_vpc::Tagging::rt_id")
                 self.ec2_client.create_tags(
                     Resources=[rt_id],
                     Tags=[{'Key': 'affinity_group', 'Value': str(affinity_group)}])
             except ClientError as c:
                 if c.response['Error']['Code'] == 'InvalidRouteTableID.NotFound':
-                    logger.debug("create_route_table: tagging failed trying again...")
+                    logger.debug(
+                        "create_route_table::InvalidRouteTableID.NotFound::Trying Again...")
                     self.sleep(i)
                     i=i+.1
                     continue
@@ -138,9 +153,14 @@ class AwsEc2(AwsBase):
     def refresh_route_tables(self):
         logger.debug("refresh_route_tables::Executing")
         vpc_id = self['Vpc']['VpcId']
-        self['RouteTables'] = self.ec2_client.describe_route_tables(Filters=[
+        res = self.ec2_client.describe_route_tables(Filters=[
             {'Name': 'vpc-id', 'Values': [vpc_id]},
-            {'Name': 'tag-key', 'Values': ['affinity_group']}])['RouteTables']
+            {'Name': 'tag-key', 'Values': ['affinity_group']}])
+        meta = rest['ResponseMetadata']
+        data = res['RouteTables']
+        logger_meta.debug("refresh_vpc::describe_route_tables::meta::{}".format(meta))
+        logger_data.debug("refresh_vpc::describe_route_tables::data{}".format(data))
+        self['RouteTables'] = data
         self.save()
 
     def associate_rt_subnet(self, affinity_group=0):
@@ -149,7 +169,8 @@ class AwsEc2(AwsBase):
             for t in rt['Tags'] if t['Key'] == 'affinity_group' \
             and t['Value'] == str(affinity_group))
         for s in self.get_af_subnets(affinity_group):
-            self.ec2_client.associate_route_table(RouteTableId=rt_id, SubnetId=s)
+            data = self.ec2_client.associate_route_table(RouteTableId=rt_id, SubnetId=s)
+            logger_data.debug("refresh_vpc::associate_route_table::data{}".format(data))
         self.sleep()
         self.refresh_route_tables()
 
@@ -159,12 +180,16 @@ class AwsEc2(AwsBase):
         try:
             for rt in self['RouteTables']:
                 for association in rt['Associations']:
-                    self.ec2_client.disassociate_route_table(
+                    meta = self.ec2_client.disassociate_route_table(
                         AssociationId=association['RouteTableAssociationId'])
-                self.ec2_client.delete_route_table(RouteTableId=rt['RouteTableId'])
+                    logger_meta.debug(
+                        "refresh_vpc::disassociate_route_table::meta::{}".format(meta))
+                meta = self.ec2_client.delete_route_table(RouteTableId=rt['RouteTableId'])
+                logger_meta.debug("refresh_vpc::delete_route_tables::meta::{}".format(meta))
             del(self['RouteTables'])
             self.save()
         except KeyError:
+            logger.debug("delete_route_tables::No Route Tables")
             return 0
         
 
@@ -173,73 +198,98 @@ class AwsEc2(AwsBase):
         vpc_id = self['Vpc']['VpcId']
         az = self.get_next_az(affinity_group)
         cidr = self.get_available_cidr_block()
-        subnet_id = self.ec2_client.create_subnet(
+        res = self.ec2_client.create_subnet(
             VpcId=vpc_id,
             AvailabilityZone=az,
-            CidrBlock=cidr)['Subnet']['SubnetId']
+            CidrBlock=cidr)
+        meta = res['ResponseMetadata']
+        data = res['Subnet']
+        subnet_id = data['SubnetId']
+        logger_meta.debug("refresh_vpc::create_subnet::meta::{}".format(meta))
+        logger_data.debug("refresh_vpc::create_subnet::data{}".format(data))
         waiter = self.ec2_client.get_waiter('subnet_available')
         i=.1
         while True:
             try:
                 waiter.wait(SubnetIds=[subnet_id])
             except WaiterError as w:
-                logger.debug("waiter error: <{}>".format(w.message))
-                logger.debug("create_subnet: waiter failed trying again...")
+                logger.debug("create_subnet::{}::waiter failed trying again...".format(w.message)
                 self.sleep(i)
                 i=i+.1
                 continue
             break
-        self.ec2_client.create_tags(
+        res = self.ec2_client.create_tags(
             Resources=[subnet_id],
             Tags=[{'Key': 'affinity_group', 'Value': str(affinity_group)}])
+        meta = res['ResponseMetadata']
+        logger_meta.debug("refresh_vpc::create_subnet::meta::{}".format(meta))
         self.refresh_subnets()
 
     def refresh_subnets(self):
         logger.debug("refresh_subnets::Executing")
         vpc_id = self['Vpc']['VpcId']
-        self['Subnets'] = self.ec2_client.describe_subnets(Filters=[
-            {'Name': 'vpc-id', 'Values': [vpc_id]}])['Subnets']
+        res = self.ec2_client.describe_subnets(Filters=[
+            {'Name': 'vpc-id', 'Values': [vpc_id]}])
+        meta = res['ResponseMetadata']
+        data = res['Subnets']
+        self['Subnets'] = data
+        logger_meta.debug("refresh_vpc::describe_subnets::meta::{}".format(meta))
+        logger_data.debug("refresh_vpc::describe_subnets::data{}".format(data))
         self.save()
 
     def delete_subnets(self):
         logger.debug("delete_subnets::Executing")
         try:
-            [self.ec2_client.delete_subnet(SubnetId=s['SubnetId']) for s in self['Subnets']]
+            for s in self['Subnets']:
+                res = self.ec2_client.delete_subnet(SubnetId=s['SubnetId'])
+                meta = res['ResponseMetadata']
+                logger_meta.debug("refresh_vpc::describe_subnets::meta::{}".format(meta))
             del(self['Subnets'])
             self.save()
         except KeyError:
+            logger.debug("delete_subnets::No Subnets")
             return 0
-        
+
 
     def create_internet_gateway(self, affinity_group=0):
         logger.debug("create_internet_gateway::Executing")
         if 'InternetGateway' in self:
+            logger.info("create_internet_gateway::Already Exists")
             return 0
         vpc_id = self['Vpc']['VpcId']
-        igw_id = self.ec2_client.create_internet_gateway()\
-            ['InternetGateway']['InternetGatewayId']
-        logger.debug("create_internet_gateway: Created <{}>".format(igw_id))
+        res = self.ec2_client.create_internet_gateway()
+        meta = resp['ResponseMetadata']
+        data = res['InternetGateway']
+        igw_id = data['InternetGatewayId']
+        logger_meta.debug("refresh_vpc::create_internet_gateway::meta::{}".format(meta))
+        logger_data.debug("refresh_vpc::create_internet_gateway::data{}".format(data))
         rt_id = self.get_af_rt(affinity_group)
-        logger.debug("create_internet_gateway: Located <{}>".format(rt_id))
-        self.ec2_client.attach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
-        logger.debug("create_internet_gateway: Attached IGW")
-        self.ec2_client.create_route(
+        res = self.ec2_client.attach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
+        meta = res['ResponseMetadata']
+        logger_meta.debug("refresh_vpc::attach_internet_gateway::meta::{}".format(meta))
+        meta = self.ec2_client.create_route(
             DestinationCidrBlock='0.0.0.0/0',
             GatewayId=igw_id,
             RouteTableId=rt_id)
-        logger.debug("create_internet_gateway: Created route")
-        self.ec2_client.create_tags(
+        logger_meta.debug("refresh_vpc::create_route::meta::{}".format(meta))
+        res = self.ec2_client.create_tags(
             Resources=[igw_id],
             Tags=[{'Key': 'affinity_group', 'Value': str(affinity_group)}])
+        meta = res['ResponseMetadata']
+        logger_meta.debug("refresh_vpc::create_tags::meta::{}".format(meta))
         self.refresh_route_tables()
         self.refresh_internet_gateway()
 
     def refresh_internet_gateway(self):
         logger.debug("refresh_internet_gateway::Executing")
         vpc_id = self['Vpc']['VpcId']
-        self['InternetGateway'] = next(igw for igw in \
-            self.ec2_client.describe_internet_gateways(Filters=[
-                {'Name': 'attachment.vpc-id', 'Values': [vpc_id]}])['InternetGateways'])
+        res = self.ec2_client.describe_internet_gateways(Filters=[
+            {'Name': 'attachment.vpc-id', 'Values': [vpc_id]}])
+        meta = res['ResponseMetada']
+        data = res['InternetGateways']
+        logger_meta.debug("refresh_vpc::describe_internet_gateways::meta::{}".format(meta))
+        logger_data.debug("refresh_vpc::describe_internet_gateways::data{}".format(data))
+        self['InternetGateway'] = data[0]
         self.save()
 
     def delete_internet_gateway(self):
@@ -247,12 +297,17 @@ class AwsEc2(AwsBase):
         vpc_id = self['Vpc']['VpcId']
         try:
             igw_id = self['InternetGateway']['InternetGatewayId']
-            self.ec2_client.detach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
+            res = self.ec2_client.detach_internet_gateway(InternetGatewayId=igw_id, VpcId=vpc_id)
+            meta = res['ResponseMetadata']
+            logger_meta.debug("refresh_vpc::delete_internet_gateways::meta::{}".format(meta))
             self.sleep()
-            self.ec2_client.delete_internet_gateway(InternetGatewayId=igw_id)
+            res = self.ec2_client.delete_internet_gateway(InternetGatewayId=igw_id)
+            meta = res['ResponseMetadata']
+            logger_meta.debug("refresh_vpc::delete_internet_gateways::meta::{}".format(meta))
             del(self['InternetGateway'])
             self.save()
         except KeyError:
+            logger.debug("delete_internet_gateways::No Internet Gateways")
             return 0
 
 
