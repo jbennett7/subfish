@@ -7,7 +7,7 @@ from subfish.iam import AwsIam
 from subfish.eks import AwsEks
 PATH = './.aws_load.yml'
 
-#aws = AwsEc2(PATH)
+aws = AwsEc2(PATH)
 #aws = AwsIam(PATH)
 #aws = AwsEks(path=PATH)
 #print(dir(aws))
@@ -26,8 +26,14 @@ PATH = './.aws_load.yml'
 
 
 
-
 #aws.create_vpc()
+#aws.create_subnet()
+#aws.create_route_table()
+#aws.delete_route_tables()
+aws.get_af_ngw()
+#aws.delete_subnets()
+#aws.get_available_cidr_block()
+#aws.get_next_az()
 #aws.create_security_group('bastion')
 #print(aws)
 #aws.delete_security_groups()
@@ -46,6 +52,6 @@ PATH = './.aws_load.yml'
 #print(aws)
 #aws.delete_nat_gateway()
 #aws.delete_route_tables()
-aws.delete_subnets()
+#aws.delete_subnets()
 #aws.delete_internet_gateway()
-aws.delete_vpc()
+#aws.delete_vpc()
