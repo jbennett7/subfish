@@ -8,6 +8,44 @@ from subfish.eks import AwsEks
 PATH = './.aws_load.yml'
 
 aws = AwsEc2(PATH)
+#aws.create_vpc()
+#aws.create_subnet()
+#aws.create_route_table()
+#aws.associate_rt_subnet()
+#aws.create_internet_gateway()
+#aws.create_subnet(affinity_group=1)
+#aws.create_route_table(affinity_group=1)
+#aws.associate_rt_subnet(affinity_group=1)
+#aws.create_nat_gateway()
+#aws.create_nat_default_route(rt_affinity_group=1)
+#aws.create_security_group("bastion")
+#aws.refresh_security_groups()
+#aws.authorize_security_group_policies("bastion")
+
+
+
+
+
+
+
+
+#aws.delete_nat_gateways()
+#aws.delete_internet_gateway()
+#aws.delete_route_tables()
+#aws.delete_subnets()
+#aws.delete_vpc()
+
+
+
+
+
+
+
+
+
+
+
+
 #aws = AwsIam(PATH)
 #aws = AwsEks(path=PATH)
 #print(dir(aws))
@@ -30,7 +68,7 @@ aws = AwsEc2(PATH)
 #aws.create_subnet()
 #aws.create_route_table()
 #aws.delete_route_tables()
-aws.get_af_ngw()
+#aws.get_af_ngw()
 #aws.delete_subnets()
 #aws.get_available_cidr_block()
 #aws.get_next_az()
