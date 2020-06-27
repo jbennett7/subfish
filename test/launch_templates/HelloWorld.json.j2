@@ -6,30 +6,9 @@
                 "Ebs": {
                     "Encrypted": false,
                     "DeleteOnTermination": true,
-                    "SnapshotId": "snap-074e8f0568ee430f1",
                     "VolumeSize": 8,
                     "VolumeType": "gp2"
                 }
-            }
-        ],
-        "NetworkInterfaces": [
-            {
-                "AssociatePublicIpAddress": true,
-                "DeleteOnTermination": true,
-                "Description": "",
-                "DeviceIndex": 0,
-                "Groups": [
-                    "sg-046770b89749d925f"
-                ],
-                "InterfaceType": "interface",
-                "Ipv6Addresses": [],
-                "PrivateIpAddresses": [
-                    {
-                        "Primary": true,
-                        "PrivateIpAddress": "10.0.0.187"
-                    }
-                ],
-                "SubnetId": "subnet-0ea6598fef335fc05"
             }
         ],
         "ImageId": "ami-09d95fab7fff3776c",
@@ -37,11 +16,6 @@
         "KeyName": "spunkKey",
         "Monitoring": {
             "Enabled": false
-        },
-        "Placement": {
-            "AvailabilityZone": "us-east-1a",
-            "GroupName": "",
-            "Tenancy": "default"
         },
         "DisableApiTermination": false,
         "InstanceInitiatedShutdownBehavior": "stop",
@@ -55,4 +29,4 @@
         "HibernationOptions": {
             "Configured": false
         }
-    }
+}

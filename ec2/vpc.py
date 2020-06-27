@@ -1,19 +1,18 @@
 from subfish.base import AwsBase
 from subfish.logger import Logger
+
 from ipaddress import ip_network
-from os import listdir
 import re, json
 from jinja2 import Template
 from botocore.exceptions import ClientError, WaiterError
-from uuid import uuid1
 
-RELATIVE_SG_AUTHORIZATIONS="sg_authorizations"
-RELATIVE_LAUNCH_TEMPLATES="launch_templates"
+#RELATIVE_SG_AUTHORIZATIONS="sg_authorizations"
+#RELATIVE_LAUNCH_TEMPLATES="launch_templates"
 LOGLEVEL='info'
-LOGLEVEL2='debug'
+#LOGLEVEL2='debug'
 # General logger
 logger = Logger(__name__)
-logger.set_level(LOGLEVEL2)
+logger.set_level(LOGLEVEL)
 
 # Logger for AWS API Response metadata
 logger_meta = Logger("{}::AWS_API_META".format(__name__))
@@ -23,15 +22,12 @@ logger_meta.set_level(LOGLEVEL)
 logger_data = Logger("{}::AWS_API".format(__name__))
 logger_data.set_level(LOGLEVEL)
 
-class AwsEc2(AwsBase):
+class AwsVpc(AwsBase):
 
     def __init__(self, path, ec2_path=".", **kwargs):
         super().__init__(path=path)
         logger.debug("__init__::Executing")
         self.ec2_client = self.session.create_client('ec2')
-        self.sg_authorization_path = "{}/{}".format(ec2_path,RELATIVE_SG_AUTHORIZATIONS)
-        self.launch_templates = "{}/{}".format(ec2_path,RELATIVE_LAUNCH_TEMPLATES)
-        logger.debug("__init__::sg_authorization_path::{}".format(self.sg_authorization_path))
 
     def get_available_cidr_block(self):
         logger.debug("get_available_cidr_block::Executing")
@@ -113,7 +109,7 @@ class AwsEc2(AwsBase):
 
 
     def create_vpc(self, cidr_block='10.0.0.0/16'):
-        logger.debug("create_vpc::Executing")
+        logger.info("create_vpc::Executing")
         if 'Vpc' in self:
             self.refresh_vpc()
             return 0
@@ -128,10 +124,12 @@ class AwsEc2(AwsBase):
         waiter.wait(VpcIds=[vpc_id])
         waiter = self.ec2_client.get_waiter('vpc_available')
         waiter.wait(VpcIds=[vpc_id])
-        res = self.modify_vpc_attribute(EnableDnsHostnames={'Value': True}, VpcId=vpc_id)
+        res = self.ec2_client.modify_vpc_attribute(
+            EnableDnsHostnames={'Value': True}, VpcId=vpc_id)
         meta = res
         logger_data.debug("create_vpc::modify_vpc_attribute::meta::{}".format(meta))
-        res = self.modify_vpc_attribute(EnableDnsSupport={'Value': True}, VpcId=vpc_id)
+        res = self.ec2_client.modify_vpc_attribute(
+            EnableDnsSupport={'Value': True}, VpcId=vpc_id)
         meta = res
         logger_data.debug("create_vpc::modify_vpc_attribute::meta::{}".format(meta))
         self.save()
@@ -148,7 +146,7 @@ class AwsEc2(AwsBase):
         self.save()
 
     def delete_vpc(self):
-        logger.debug("delete_vpc::Executing")
+        logger.info("delete_vpc::Executing")
         try:
             vpc_id = self['Vpc']['VpcId']
             logger.debug("delete_vpc::Deleting::{}".format(vpc_id))
@@ -162,7 +160,7 @@ class AwsEc2(AwsBase):
 
 
     def create_route_table(self, affinity_group=0):
-        logger.debug("create_route_table::Executing")
+        logger.info("create_route_table::Executing")
         vpc_id = self['Vpc']['VpcId']
         res = self.ec2_client.create_route_table(VpcId=vpc_id)
         meta = res['ResponseMetadata']
@@ -175,9 +173,10 @@ class AwsEc2(AwsBase):
         while True:
             try:
                 logger.debug("create_route_table::Tagging::{}".format(rt_id))
-                self.ec2_client.create_tags(
+                res = self.ec2_client.create_tags(
                     Resources=[rt_id],
                     Tags=[{'Key': 'affinity_group', 'Value': str(affinity_group)}])
+                logger_meta.debug("create_route_table::create_tags::meta::{}".format(meta))
             except ClientError as c:
                 if c.response['Error']['Code'] == 'InvalidRouteTableID.NotFound':
                     logger.debug(
@@ -219,7 +218,7 @@ class AwsEc2(AwsBase):
         self.refresh_route_tables()
 
     def delete_route_tables(self, affinity_group=0):
-        logger.debug("delete_route_tables::Executing")
+        logger.info("delete_route_tables::Executing")
         self.refresh_route_tables()
         try:
             for rt in self['RouteTables']:
@@ -239,7 +238,7 @@ class AwsEc2(AwsBase):
         
 
     def create_subnet(self, affinity_group=0):
-        logger.debug("create_subnet::Executing")
+        logger.info("create_subnet::Executing")
         vpc_id = self['Vpc']['VpcId']
         az = self.get_next_az(affinity_group)
         cidr = self.get_available_cidr_block()
@@ -284,7 +283,7 @@ class AwsEc2(AwsBase):
         self.save()
 
     def delete_subnets(self):
-        logger.debug("delete_subnets::Executing")
+        logger.info("delete_subnets::Executing")
         try:
             for s in self['Subnets']:
                 res = self.ec2_client.delete_subnet(SubnetId=s['SubnetId'])
@@ -298,7 +297,7 @@ class AwsEc2(AwsBase):
 
 
     def create_internet_gateway(self, affinity_group=0):
-        logger.debug("create_internet_gateway::Executing")
+        logger.info("create_internet_gateway::Executing")
         try:
             vpc_id = self['Vpc']['VpcId']
             res = self.ec2_client.create_internet_gateway()
@@ -321,7 +320,7 @@ class AwsEc2(AwsBase):
             logger_meta.debug("create_internet_gateway::create_route::meta::{}".format(meta))
             for s in self['Subnets']:
                 for t in s['Tags']:
-                    if t['Name'] == 'affinity_group' and t['Value'] == str(affinity_group):
+                    if t['Key'] == 'affinity_group' and t['Value'] == str(affinity_group):
                         res = self.ec2_client.modify_subnet_attribute(
                             MapPublicIpOnLaunch={'Value': True},
                             SubnetId=s['SubnetId'])
@@ -336,7 +335,10 @@ class AwsEc2(AwsBase):
             self.refresh_route_tables()
             self.refresh_internet_gateway()
         except KeyError as k:
-            logger.error("create_internet_gateway::KeyError::{}".format(k.args[0]))
+            if k.args[0] == 'Vpc':
+                logger.error("create_internet_gateway::KeyError::{}".format(k.args[0]))
+            else:
+                raise
         except ClientError as c:
             if c.response['Error']['Code'] == 'InvalidParameterValue':
                 logger.error("create_internet_gateway::ClientError::{}".format(c.message))
@@ -363,7 +365,7 @@ class AwsEc2(AwsBase):
             logger.warning("refresh_internet_gateway::IndexError")
 
     def delete_internet_gateway(self):
-        logger.debug("delete_internet_gateway::Executing")
+        logger.info("delete_internet_gateway::Executing")
         try:
             vpc_id = self['Vpc']['VpcId']
             igw_id = self['InternetGateway']['InternetGatewayId']
@@ -384,7 +386,7 @@ class AwsEc2(AwsBase):
 
 
     def create_nat_gateway(self, affinity_group=0):
-        logger.debug("create_nat_gateway::Executing")
+        logger.info("create_nat_gateway::Executing")
         self.refresh_internet_gateway()
         if 'InternetGateway' not in self:
             raise Exception("No Internet Gateway")
@@ -454,7 +456,7 @@ class AwsEc2(AwsBase):
         self.save()
 
     def delete_nat_gateways(self):
-        logger.debug("delete_nat_gateway::Executing")
+        logger.info("delete_nat_gateway::Executing")
         try:
             eipalloc_ids = []
             for n in self['NatGateways']:
@@ -492,185 +494,3 @@ class AwsEc2(AwsBase):
             self.save()
         except KeyError as k:
             logger.debug("delete_nat_gateway::KeyError::{}".format(k.args[0]))
-
-
-    def create_security_group(self, sg_name):
-        logger.debug("create_security_group::Executing")
-        vpc_id = self['Vpc']['VpcId']
-        try:
-            res = self.ec2_client.create_security_group(
-                Description=sg_name,
-                GroupName=sg_name,
-                VpcId=vpc_id)
-            data = res
-            group_id = res
-            logger_data.debug(
-                "create_security_group::create_security_group::data::{}".format(data))
-            self.refresh_security_groups()
-            self.sleep()
-        except ClientError as c:
-            if c.response['Error']['Code'] == 'InvalidGroup.Duplicate':
-                pass
-            else:
-                raise
-        self.refresh_security_groups()
-
-    def refresh_security_groups(self):
-        logger.debug("refresh_security_group::Executing")
-        vpc_id = self['Vpc']['VpcId']
-        res = self.ec2_client.describe_security_groups(
-            Filters=[{'Name': 'vpc-id', 'Values': [vpc_id]}])
-        meta = res['ResponseMetadata']
-        data = res['SecurityGroups']
-        logger_meta.debug(
-            "refresh_security_groups::describe_security_groups::meta::{}".format(meta))
-        logger_data.debug(
-            "refresh_security_groups::describe_security_groups::data::{}".format(data))
-        self['SecurityGroups'] = [s for s in data if s['GroupName'] != 'default']
-        self.save()
-
-    def authorize_security_group_policies(self, sg_name, jinja_vars={}):
-        logger.debug("authorize_security_group_policies::Executing")
-        sg_id = next(sg['GroupId'] for sg in self['SecurityGroups'] \
-            if sg['GroupName'] == sg_name)
-        if "{}_ingress.json.j2".format(sg_name) in listdir(self.sg_authorization_path):
-            f = open("{}/{}_ingress.json.j2".format(self.sg_authorization_path, sg_name))
-            data = f.read()
-            res = self.ec2_client.authorize_security_group_ingress(
-                GroupId=sg_id,
-                IpPermissions=json.loads(Template(data).render(jinja2_vars)))
-            meta = res['ResponseMetadata']
-            logger_meta.debug(
-                "authorize_security_group_policies::authorize_security_group_ingresss::meta::{}".format(meta))
-        if "{}_egress.json.j2".format(sg_name) in listdir(self.sg_authorization_path):
-            f = open("{}/{}_egress.json.j2".format(self.sg_authorization_path, sg_name))
-            data = f.read()
-            res = self.ec2_client.authorize_security_group_egress(
-                GroupId=sg_id,
-                IpPermissions=json.loads(Template(data).render(jinja2_vars)))
-            meta = res['ResponseMetadata']
-            logger_meta.debug(
-                "authorize_security_group_policies::authorize_security_group_egresss::meta::{}".format(meta))
-        self.refresh_security_groups()
-
-    def delete_security_groups(self):
-        logger.debug("delete_security_group::Executing")
-        try:
-            for sg in [s for s in self['SecurityGroups'] if s['GroupName'] != 'default']:
-                if sg['IpPermissions']:
-                    res = self.ec2_client.revoke_security_group_ingress(
-                        GroupId=sg['GroupId'],
-                        IpPermissions=sg['IpPermissions'])
-                    meta = res['ResponseMetadata']
-                    logger_meta.debug(
-                        "delete_security_groups::revoke_security_group_ingresss::meta::{}".format(meta))
-                if sg['IpPermissionsEgress']:
-                    res = self.ec2_client.revoke_security_group_egress(
-                        GroupId=sg['GroupId'],
-                        IpPermissions=sg['IpPermissionsEgress'])
-                    meta = res['ResponseMetadata']
-                    logger_meta.debug(
-                        "delete_security_groups::revoke_security_group_egresss::meta::{}".format(meta))
-                    self.ec2_client.delete_security_group(GroupId=sg['GroupId'])
-            del(self['SecurityGroups'])
-        except ClientError as c:
-            if c.response['Error']['Code'] == 'InvalidGroup.NotFound':
-                logger.debug("delete_security_group")
-                pass
-            else:
-                raise
-        except KeyError as k:
-            if k.args[0] == 'SecurityGroups':
-                pass
-            else:
-                raise
-        self.save()
-
-    def create_launch_template(self, launch_template_name, jinja2_vars={}):
-        logger.debug("create_launch_template::Executing")
-        try:
-            idemp_token = str(uuid1())
-            regex = re.compile(r'\.json\.j2')
-            f = open("{}/{}.json.j2".format(self.launch_templates, launch_template_name))
-            data = f.read()
-            res = self.ec2_client.create_launch_template(
-                ClientToken = idemp_token,
-                LaunchTemplateName = launch_template_name,
-                VersionDescription = launch_template_name,
-                LaunchTemplateData=json.loads(Template(data).render(jinja2_vars)))
-            meta = res['ResponseMetadata']
-            data = res['LaunchTemplate']
-            logger_meta.debug(
-                "create_launch_template::create_launch_template::meta::{}".format(meta))
-            logger_data.debug(
-                "create_launch_template::create_launch_template::data::{}".format(data))
-            self.refresh_launch_templates()
-        except ClientError as c:
-            if c.response['Error']['Code'] == 'InvalidLaunchTemplateName.AlreadyExistsException':
-                logger.warning(
-                    "create_launch_template::ClientError::{}".format(
-                        c.response['Error']['Message']))
-
-    def modify_launch_template(self, launch_template_name, jinja2_vars={}):
-        logger.debug("create_launch_template::Executing")
-        idemp_token = str(uuid1())
-        regex = re.compile(r'\.json\.j2')
-        f = open("{}/{}.json.j2".format(self.launch_templates, launch_template_name))
-        data = f.read()
-        res = self.ec2_client.create_launch_template_version(
-            ClientToken = idemp_token,
-            LaunchTemplateName = launch_template_name,
-            VersionDescription = launch_template_name,
-            LaunchTemplateData=json.loads(Template(data).render(jinja2_vars)))
-        meta = res['ResponseMetadata']
-        data = res['LaunchTemplateVersion']
-        logger_meta.debug(
-            "modify_launch_template::create_launch_template_version::meta::{}".format(meta))
-        logger_data.debug(
-            "modify_launch_template::create_launch_template_version::data::{}".format(data))
-        idemp_token2 = str(uuid1())
-        res = self.ec2_client.modify_launch_template(
-            ClientToken = idemp_token2,
-            LaunchTemplateName = launch_template_name,
-            DefaultVersion = str(data['VersionNumber']))
-        meta = res['ResponseMetadata']
-        data = res['LaunchTemplate']
-        logger_meta.debug(
-            "modify_launch_template::modify_launch_template::meta::{}".format(meta))
-        logger_data.debug(
-            "modify_launch_template::modify_launch_template::data::{}".format(data))
-        self.refresh_launch_templates()
-
-    def refresh_launch_templates(self):
-        logger.debug("refresh_launch_templates::Executing")
-        regex = re.compile(r'(\w+)\.json(\.j2)*')
-        lts = []
-        for f in listdir(self.launch_templates):
-            r = regex.search(f)
-            if r:
-                lts.append(r.group(1))
-        logger.debug("refresh_launch_templates::launch_templates::{}".format(lts))
-        res = self.ec2_client.describe_launch_templates(Filters=[
-            {'Name': 'launch-template-name', 'Values': lts}])
-        meta = res['ResponseMetadata']
-        data = res['LaunchTemplates']
-        logger_meta.debug(
-            "refresh_launch_templates::describe_launch_templates::meta::{}".format(meta))
-        logger_data.debug(
-            "refresh_launch_templates::describe_launch_templates::data::{}".format(data))
-        self['LaunchTemplates'] = data
-        self.save()
-
-    def delete_launch_templates(self):
-        logger.debug("delete_launch_templates")
-        for lt in self['LaunchTemplates']:
-            res = self.ec2_client.delete_launch_template(
-                LaunchTemplateId=lt['LaunchTemplateId'])
-            meta = res['ResponseMetadata']
-            data = res['LaunchTemplate']
-            logger_meta.debug(
-                "delete_launch_templates::delete_launch_template::{}".format(meta))
-            logger_data.debug(
-                "delete_launch_templates::delete_launch_template::{}".format(data))
-        del(self['LaunchTemplates'])
-        self.save()
