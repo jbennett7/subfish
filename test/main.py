@@ -8,6 +8,11 @@ from subfish.eks import AwsEks
 PATH = './.aws_load.yml'
 
 aws = AwsEc2(PATH)
+aws.create_launch_template('HelloWorld')
+aws.refresh_launch_templates()
+aws.modify_launch_template('HelloWorld')
+aws.refresh_launch_templates()
+aws.delete_launch_templates()
 #aws.create_vpc()
 #aws.create_subnet()
 #aws.create_route_table()

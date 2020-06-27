@@ -5,8 +5,10 @@ from os import listdir
 import re, json
 from jinja2 import Template
 from botocore.exceptions import ClientError, WaiterError
+from uuid import uuid1
 
 RELATIVE_SG_AUTHORIZATIONS="sg_authorizations"
+RELATIVE_LAUNCH_TEMPLATES="launch_templates"
 LOGLEVEL='info'
 LOGLEVEL2='debug'
 # General logger
@@ -28,6 +30,7 @@ class AwsEc2(AwsBase):
         logger.debug("__init__::Executing")
         self.ec2_client = self.session.create_client('ec2')
         self.sg_authorization_path = "{}/{}".format(ec2_path,RELATIVE_SG_AUTHORIZATIONS)
+        self.launch_templates = "{}/{}".format(ec2_path,RELATIVE_LAUNCH_TEMPLATES)
         logger.debug("__init__::sg_authorization_path::{}".format(self.sg_authorization_path))
 
     def get_available_cidr_block(self):
@@ -125,6 +128,12 @@ class AwsEc2(AwsBase):
         waiter.wait(VpcIds=[vpc_id])
         waiter = self.ec2_client.get_waiter('vpc_available')
         waiter.wait(VpcIds=[vpc_id])
+        res = self.modify_vpc_attribute(EnableDnsHostnames={'Value': True}, VpcId=vpc_id)
+        meta = res
+        logger_data.debug("create_vpc::modify_vpc_attribute::meta::{}".format(meta))
+        res = self.modify_vpc_attribute(EnableDnsSupport={'Value': True}, VpcId=vpc_id)
+        meta = res
+        logger_data.debug("create_vpc::modify_vpc_attribute::meta::{}".format(meta))
         self.save()
 
     def refresh_vpc(self):
@@ -310,6 +319,15 @@ class AwsEc2(AwsBase):
                 GatewayId=igw_id,
                 RouteTableId=rt_id)
             logger_meta.debug("create_internet_gateway::create_route::meta::{}".format(meta))
+            for s in self['Subnets']:
+                for t in s['Tags']:
+                    if t['Name'] == 'affinity_group' and t['Value'] == str(affinity_group):
+                        res = self.ec2_client.modify_subnet_attribute(
+                            MapPublicIpOnLaunch={'Value': True},
+                            SubnetId=s['SubnetId'])
+                        meta = res['ResponseMetadata']
+                        logger_meta.debug(
+                            "create_internet_gateway::attach_internet_gateway::meta::{}".format(meta))
             res = self.ec2_client.create_tags(
                 Resources=[igw_id],
                 Tags=[{'Key': 'affinity_group', 'Value': str(affinity_group)}])
@@ -520,7 +538,7 @@ class AwsEc2(AwsBase):
             data = f.read()
             res = self.ec2_client.authorize_security_group_ingress(
                 GroupId=sg_id,
-                IpPermissions=json.loads(Template(data).render(jinja_vars)))
+                IpPermissions=json.loads(Template(data).render(jinja2_vars)))
             meta = res['ResponseMetadata']
             logger_meta.debug(
                 "authorize_security_group_policies::authorize_security_group_ingresss::meta::{}".format(meta))
@@ -529,7 +547,7 @@ class AwsEc2(AwsBase):
             data = f.read()
             res = self.ec2_client.authorize_security_group_egress(
                 GroupId=sg_id,
-                IpPermissions=json.loads(Template(data).render(jinja_vars)))
+                IpPermissions=json.loads(Template(data).render(jinja2_vars)))
             meta = res['ResponseMetadata']
             logger_meta.debug(
                 "authorize_security_group_policies::authorize_security_group_egresss::meta::{}".format(meta))
@@ -568,7 +586,91 @@ class AwsEc2(AwsBase):
                 raise
         self.save()
 
-    def create_launch_template(self, idempotency_token):
+    def create_launch_template(self, launch_template_name, jinja2_vars={}):
         logger.debug("create_launch_template::Executing")
+        try:
+            idemp_token = str(uuid1())
+            regex = re.compile(r'\.json\.j2')
+            f = open("{}/{}.json.j2".format(self.launch_templates, launch_template_name))
+            data = f.read()
+            res = self.ec2_client.create_launch_template(
+                ClientToken = idemp_token,
+                LaunchTemplateName = launch_template_name,
+                VersionDescription = launch_template_name,
+                LaunchTemplateData=json.loads(Template(data).render(jinja2_vars)))
+            meta = res['ResponseMetadata']
+            data = res['LaunchTemplate']
+            logger_meta.debug(
+                "create_launch_template::create_launch_template::meta::{}".format(meta))
+            logger_data.debug(
+                "create_launch_template::create_launch_template::data::{}".format(data))
+            self.refresh_launch_templates()
+        except ClientError as c:
+            if c.response['Error']['Code'] == 'InvalidLaunchTemplateName.AlreadyExistsException':
+                logger.warning(
+                    "create_launch_template::ClientError::{}".format(
+                        c.response['Error']['Message']))
 
+    def modify_launch_template(self, launch_template_name, jinja2_vars={}):
+        logger.debug("create_launch_template::Executing")
+        idemp_token = str(uuid1())
+        regex = re.compile(r'\.json\.j2')
+        f = open("{}/{}.json.j2".format(self.launch_templates, launch_template_name))
+        data = f.read()
+        res = self.ec2_client.create_launch_template_version(
+            ClientToken = idemp_token,
+            LaunchTemplateName = launch_template_name,
+            VersionDescription = launch_template_name,
+            LaunchTemplateData=json.loads(Template(data).render(jinja2_vars)))
+        meta = res['ResponseMetadata']
+        data = res['LaunchTemplateVersion']
+        logger_meta.debug(
+            "modify_launch_template::create_launch_template_version::meta::{}".format(meta))
+        logger_data.debug(
+            "modify_launch_template::create_launch_template_version::data::{}".format(data))
+        idemp_token2 = str(uuid1())
+        res = self.ec2_client.modify_launch_template(
+            ClientToken = idemp_token2,
+            LaunchTemplateName = launch_template_name,
+            DefaultVersion = str(data['VersionNumber']))
+        meta = res['ResponseMetadata']
+        data = res['LaunchTemplate']
+        logger_meta.debug(
+            "modify_launch_template::modify_launch_template::meta::{}".format(meta))
+        logger_data.debug(
+            "modify_launch_template::modify_launch_template::data::{}".format(data))
+        self.refresh_launch_templates()
 
+    def refresh_launch_templates(self):
+        logger.debug("refresh_launch_templates::Executing")
+        regex = re.compile(r'(\w+)\.json(\.j2)*')
+        lts = []
+        for f in listdir(self.launch_templates):
+            r = regex.search(f)
+            if r:
+                lts.append(r.group(1))
+        logger.debug("refresh_launch_templates::launch_templates::{}".format(lts))
+        res = self.ec2_client.describe_launch_templates(Filters=[
+            {'Name': 'launch-template-name', 'Values': lts}])
+        meta = res['ResponseMetadata']
+        data = res['LaunchTemplates']
+        logger_meta.debug(
+            "refresh_launch_templates::describe_launch_templates::meta::{}".format(meta))
+        logger_data.debug(
+            "refresh_launch_templates::describe_launch_templates::data::{}".format(data))
+        self['LaunchTemplates'] = data
+        self.save()
+
+    def delete_launch_templates(self):
+        logger.debug("delete_launch_templates")
+        for lt in self['LaunchTemplates']:
+            res = self.ec2_client.delete_launch_template(
+                LaunchTemplateId=lt['LaunchTemplateId'])
+            meta = res['ResponseMetadata']
+            data = res['LaunchTemplate']
+            logger_meta.debug(
+                "delete_launch_templates::delete_launch_template::{}".format(meta))
+            logger_data.debug(
+                "delete_launch_templates::delete_launch_template::{}".format(data))
+        del(self['LaunchTemplates'])
+        self.save()
