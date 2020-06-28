@@ -10,9 +10,10 @@ PATH='./.aws_dict.yml'
 
 class AwsBase(dict):
     def __init__(self, path):
-        logger.debug("Executing AwsBase Constructor")
+        logger.info("__init__::Executing")
         self.session = botocore.session.get_session()
         self.path = path
+        logger.info("__init__::path::{}".format(self.path))
         self.load()
 
     def list_append(self, k, v):

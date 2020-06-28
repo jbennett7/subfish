@@ -8,21 +8,25 @@ from botocore.exceptions import ClientError, WaiterError
 
 #RELATIVE_SG_AUTHORIZATIONS="sg_authorizations"
 #RELATIVE_LAUNCH_TEMPLATES="launch_templates"
+LOGLEVEL='info'
 #LOGLEVEL2='debug'
 # General logger
 logger = Logger(__name__)
+logger.set_level(LOGLEVEL)
 
 # Logger for AWS API Response metadata
 logger_meta = Logger("{}::AWS_API_META".format(__name__))
+logger_meta.set_level(LOGLEVEL)
 
 # Logger for AWS API returns
 logger_data = Logger("{}::AWS_API".format(__name__))
+logger_data.set_level(LOGLEVEL)
 
 class AwsVpc(AwsBase):
 
-    def __init__(self, path, **kwargs):
-        logger.info("__init__::Executing")
-        super().__init__(path, **kwargs)
+    def __init__(self, path, ec2_path=".", **kwargs):
+        super().__init__(path=path)
+        logger.debug("__init__::Executing")
         self.ec2_client = self.session.create_client('ec2')
 
     def get_available_cidr_block(self):

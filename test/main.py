@@ -2,13 +2,12 @@ from os import getcwd, remove, listdir
 from sys import path
 path.append('/'.join(getcwd().split('/')[:-2]))
 
-from subfish.ec2.ec2 import AwsEc2
+from subfish.ec2 import Ec2
 #from subfish.iam import AwsIam
 #from subfish.eks import AwsEks
 PATH = './.aws_load.yml'
 
-def create_env():
-    aws = AwsEc2(PATH)
+def create_env(aws):
     aws.create_vpc()
 #   aws.create_subnet()
 #   aws.create_route_table()
@@ -21,18 +20,23 @@ def create_env():
 #   aws.create_nat_gateway()
 #   aws.create_nat_default_route(rt_affinity_group=1)
     
-#   aws.create_security_group("bastion")
-#   aws.authorize_security_group_policies("bastion")
+    try:
+        aws.create_security_group("bastion")
+        aws.authorize_security_group_policies("bastion")
+    except Exception as e:
+        print(e)
 
 #aws.create_launch_template('HelloWorld')
 #aws.run_instance("HelloWorld")
 
 
 
-def destroy_env():
-    aws = AwsEc2(PATH)
+def destroy_env(aws):
 #   aws.terminate_instances()
-#   aws.delete_security_groups()
+    try:
+        aws.delete_security_groups()
+    except Exception as e:
+        print(e)
 #   aws.delete_launch_templates()
     
 #   aws.delete_nat_gateways()
@@ -41,6 +45,6 @@ def destroy_env():
 #   aws.delete_subnets()
     aws.delete_vpc()
 
-
-create_env()
-destroy_env()
+aws = Ec2(PATH, config_path='.')
+create_env(aws)
+destroy_env(aws)

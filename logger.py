@@ -1,5 +1,5 @@
 import logging
-LOGLEVEL = logging.WARNING
+LOGLEVEL = logging.INFO
 
 class Logger():
     def __init__(self, name):
