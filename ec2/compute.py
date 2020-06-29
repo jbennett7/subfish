@@ -30,7 +30,7 @@ class AwsCompute(AwsBase):
         try:
             idemp_token = str(uuid1())
             regex = re.compile(r'\.json\.j2')
-            f = open("{}/{}.json.j2".format(self.launch_templates, launch_template_name))
+            f = open("{}/{}.json.j2".format(self.launch_templates_path, launch_template_name))
             data = f.read()
             res = self.ec2_client.create_launch_template(
                 ClientToken = idemp_token,
@@ -84,7 +84,7 @@ class AwsCompute(AwsBase):
         logger.debug("refresh_launch_templates::Executing")
         regex = re.compile(r'(\w+)\.json(\.j2)*')
         lts = []
-        for f in listdir(self.launch_templates):
+        for f in listdir(self.launch_templates_path):
             r = regex.search(f)
             if r:
                 lts.append(r.group(1))
@@ -102,21 +102,24 @@ class AwsCompute(AwsBase):
 
     def delete_launch_templates(self):
         logger.info("delete_launch_templates::Executing")
-        for lt in self['LaunchTemplates']:
-            res = self.ec2_client.delete_launch_template(
-                LaunchTemplateId=lt['LaunchTemplateId'])
-            meta = res['ResponseMetadata']
-            data = res['LaunchTemplate']
-            logger.debug(
-                "delete_launch_templates::delete_launch_template::{}".format(meta))
-            logger.debug(
-                "delete_launch_templates::delete_launch_template::{}".format(data))
-        del(self['LaunchTemplates'])
-        self.save()
+        try:
+            for lt in self['LaunchTemplates']:
+                res = self.ec2_client.delete_launch_template(
+                    LaunchTemplateId=lt['LaunchTemplateId'])
+                meta = res['ResponseMetadata']
+                data = res['LaunchTemplate']
+                logger.info(
+                    "delete_launch_templates::delete_launch_template::{}".format(meta))
+                logger.info(
+                    "delete_launch_templates::delete_launch_template::{}".format(data))
+            del(self['LaunchTemplates'])
+            self.save()
+        except KeyError as k:
+            logger.debug("delete_launch_templates::KeyError::%s", k.args[0])
 
 
     def run_instance(self, instance_template, affinity_group=0):
-        logger.debug("run_instance::Executing")
+        logger.info("run_instance::Executing")
         vpc_id = self['Vpc']['VpcId']
         subnet_ids = [s['SubnetId'] for s in self['Subnets'] for t in s['Tags'] \
             if t['Key'] == 'affinity_group' and t['Value'] == str(affinity_group)]
@@ -142,6 +145,7 @@ class AwsCompute(AwsBase):
         logger.debug(
             "run_instances::run_instances::data::{}".format(data))
         inst_id = [i['InstanceId'] for i in data]
+        logger.info("run_instances::waiting for instance")
         waiter = self.ec2_client.get_waiter('instance_exists')
         waiter.wait(InstanceIds=inst_id)
         waiter = self.ec2_client.get_waiter('instance_running')
@@ -163,7 +167,7 @@ class AwsCompute(AwsBase):
         self.save()
 
     def terminate_instances(self):
-        logger.debug("terminate_instances::Executing")
+        logger.info("terminate_instances::Executing")
         inst_id = [i['InstanceId'] for i in self['Instances']]
         res = self.ec2_client.terminate_instances(InstanceIds=inst_id)
         meta = res['ResponseMetadata']
@@ -173,5 +177,6 @@ class AwsCompute(AwsBase):
         logger.debug(
             "terminate_instances::terminate_instances::data::{}".format(data))
         waiter = self.ec2_client.get_waiter('instance_terminated')
+        logger.info("terminate_instances::waiting for instances to terminate")
         waiter.wait(InstanceIds=inst_id)
         self.save()
