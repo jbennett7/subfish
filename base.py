@@ -2,18 +2,17 @@ from botocore.exceptions import ClientError
 import botocore.session
 from time import sleep
 import yaml, re
-from subfish.logger import Logger
-logger = Logger(__name__)
-
+import logging
 
 PATH='./.aws_dict.yml'
+logger = logging.getLogger(__name__)
 
 class AwsBase(dict):
     def __init__(self, path):
-        logger.info("__init__::Executing")
+        logger.debug("__init__:l:Executing")
         self.session = botocore.session.get_session()
         self.path = path
-        logger.info("__init__::path::{}".format(self.path))
+        logger.info("__init__::path::%s", self.path)
         self.load()
 
     def list_append(self, k, v):
@@ -33,7 +32,7 @@ class AwsBase(dict):
     def save(self):
         logger.debug("save: Executing")
         f = open(self.path, 'w')
-        logger.debug("saving: {}".format(self))
+        logger.debug("saving::%s", self)
         yaml.safe_dump(dict(self), f, default_flow_style=False)
 
     def sleep(self, s=1):

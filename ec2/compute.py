@@ -1,24 +1,14 @@
-from subfish.logger import Logger
 from subfish.base import AwsBase
 
 from os import listdir
 import re, json
 from uuid import uuid1
 from jinja2 import Template
+import logging
 
 from botocore.exceptions import ClientError, WaiterError
 
-LOGLEVEL='info'
-logger = Logger(__name__)
-logger.set_level(LOGLEVEL)
-
-# Logger for AWS API Response metadata
-logger_meta = Logger("{}::AWS_API_META".format(__name__))
-logger_meta.set_level(LOGLEVEL)
-
-# Logger for AWS API returns
-logger_data = Logger("{}::AWS_API".format(__name__))
-logger_data.set_level(LOGLEVEL)
+logger = logging.getLogger(__name__)
 
 RELATIVE_LAUNCH_TEMPLATES="launch_templates"
 RELATIVE_SG_AUTHORIZATIONS="sg_authorizations"
@@ -49,9 +39,9 @@ class AwsCompute(AwsBase):
                 LaunchTemplateData=json.loads(Template(data).render(jinja2_vars)))
             meta = res['ResponseMetadata']
             data = res['LaunchTemplate']
-            logger_meta.debug(
+            logger.debug(
                 "create_launch_template::create_launch_template::meta::{}".format(meta))
-            logger_data.debug(
+            logger.debug(
                 "create_launch_template::create_launch_template::data::{}".format(data))
             self.refresh_launch_templates()
         except ClientError as c:
@@ -73,9 +63,9 @@ class AwsCompute(AwsBase):
             LaunchTemplateData=json.loads(Template(data).render(jinja2_vars)))
         meta = res['ResponseMetadata']
         data = res['LaunchTemplateVersion']
-        logger_meta.debug(
+        logger.debug(
             "modify_launch_template::create_launch_template_version::meta::{}".format(meta))
-        logger_data.debug(
+        logger.debug(
             "modify_launch_template::create_launch_template_version::data::{}".format(data))
         idemp_token2 = str(uuid1())
         res = self.ec2_client.modify_launch_template(
@@ -84,9 +74,9 @@ class AwsCompute(AwsBase):
             DefaultVersion = str(data['VersionNumber']))
         meta = res['ResponseMetadata']
         data = res['LaunchTemplate']
-        logger_meta.debug(
+        logger.debug(
             "modify_launch_template::modify_launch_template::meta::{}".format(meta))
-        logger_data.debug(
+        logger.debug(
             "modify_launch_template::modify_launch_template::data::{}".format(data))
         self.refresh_launch_templates()
 
@@ -103,9 +93,9 @@ class AwsCompute(AwsBase):
             {'Name': 'launch-template-name', 'Values': lts}])
         meta = res['ResponseMetadata']
         data = res['LaunchTemplates']
-        logger_meta.debug(
+        logger.debug(
             "refresh_launch_templates::describe_launch_templates::meta::{}".format(meta))
-        logger_data.debug(
+        logger.debug(
             "refresh_launch_templates::describe_launch_templates::data::{}".format(data))
         self['LaunchTemplates'] = data
         self.save()
@@ -117,9 +107,9 @@ class AwsCompute(AwsBase):
                 LaunchTemplateId=lt['LaunchTemplateId'])
             meta = res['ResponseMetadata']
             data = res['LaunchTemplate']
-            logger_meta.debug(
+            logger.debug(
                 "delete_launch_templates::delete_launch_template::{}".format(meta))
-            logger_data.debug(
+            logger.debug(
                 "delete_launch_templates::delete_launch_template::{}".format(data))
         del(self['LaunchTemplates'])
         self.save()
@@ -135,9 +125,9 @@ class AwsCompute(AwsBase):
             {'Name': 'subnet-id', 'Values': subnet_ids}])
         meta = res['ResponseMetadata']
         data = res['Reservations']
-        logger_meta.debug(
+        logger.debug(
             "run_instances::describe_instances::meta::{}".format(meta))
-        logger_data.debug(
+        logger.debug(
             "run_instances::describe_instances::data::{}".format(data))
         res = self.ec2_client.run_instances(LaunchTemplate={
             'LaunchTemplateName': instance_template},
@@ -147,9 +137,9 @@ class AwsCompute(AwsBase):
             MaxCount=1)
         meta = res['ResponseMetadata']
         data = res['Instances']
-        logger_meta.debug(
+        logger.debug(
             "run_instances::run_instances::meta::{}".format(meta))
-        logger_data.debug(
+        logger.debug(
             "run_instances::run_instances::data::{}".format(data))
         inst_id = [i['InstanceId'] for i in data]
         waiter = self.ec2_client.get_waiter('instance_exists')
@@ -165,9 +155,9 @@ class AwsCompute(AwsBase):
             {'Name': 'vpc-id', 'Values': [vpc_id]}])
         meta = res['ResponseMetadata']
         data = res['Reservations'][0]
-        logger_meta.debug(
+        logger.debug(
             "refresh_instances::run_instances::meta::{}".format(meta))
-        logger_data.debug(
+        logger.debug(
             "refresh_instances::run_instances::data::{}".format(data))
         self['Instances'] = data['Instances']
         self.save()
@@ -178,9 +168,9 @@ class AwsCompute(AwsBase):
         res = self.ec2_client.terminate_instances(InstanceIds=inst_id)
         meta = res['ResponseMetadata']
         data = res['TerminatingInstances']
-        logger_meta.debug(
+        logger.debug(
             "terminate_instances::terminate_instances::meta::{}".format(meta))
-        logger_data.debug(
+        logger.debug(
             "terminate_instances::terminate_instances::data::{}".format(data))
         waiter = self.ec2_client.get_waiter('instance_terminated')
         waiter.wait(InstanceIds=inst_id)

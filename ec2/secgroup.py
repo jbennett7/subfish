@@ -1,6 +1,6 @@
-from subfish.logger import Logger
 from subfish.base import AwsBase
 
+import logging
 from os import listdir
 import re, json
 from uuid import uuid1
@@ -8,26 +8,16 @@ from jinja2 import Template
 
 from botocore.exceptions import ClientError, WaiterError
 
-LOGLEVEL='info'
-logger = Logger(__name__)
-logger.set_level(LOGLEVEL)
-
-# Logger for AWS API Response metadata
-logger_meta = Logger("{}::AWS_API_META".format(__name__))
-logger_meta.set_level(LOGLEVEL)
-
-# Logger for AWS API returns
-logger_data = Logger("{}::AWS_API".format(__name__))
-logger_data.set_level(LOGLEVEL)
-
 RELATIVE_LAUNCH_TEMPLATES="launch_templates"
 RELATIVE_SG_AUTHORIZATIONS="sg_authorizations"
 RELATIVE_USER_DATA="user_data"
 
+logger = logging.getLogger(__name__)
+
 class AwsSG(AwsBase):
 
     def __init__(self, path, config_path):
-        logger.debug("__init__::Executing")
+        logger.info("__init__::Executing")
         super().__init__(path)
         self.ec2_client = self.session.create_client('ec2')
         self.sg_authorization_path = "{}/{}".format(config_path,RELATIVE_SG_AUTHORIZATIONS)
@@ -43,7 +33,7 @@ class AwsSG(AwsBase):
                 VpcId=vpc_id)
             data = res
             group_id = res
-            logger_data.debug(
+            logger.debug(
                 "create_security_group::create_security_group::data::{}".format(data))
             self.refresh_security_groups()
             self.sleep()
@@ -61,9 +51,9 @@ class AwsSG(AwsBase):
             Filters=[{'Name': 'vpc-id', 'Values': [vpc_id]}])
         meta = res['ResponseMetadata']
         data = res['SecurityGroups']
-        logger_meta.debug(
+        logger.debug(
             "refresh_security_groups::describe_security_groups::meta::{}".format(meta))
-        logger_data.debug(
+        logger.debug(
             "refresh_security_groups::describe_security_groups::data::{}".format(data))
         self['SecurityGroups'] = [s for s in data if s['GroupName'] != 'default']
         self.save()
@@ -79,7 +69,7 @@ class AwsSG(AwsBase):
                 GroupId=sg_id,
                 IpPermissions=json.loads(Template(data).render(jinja2_vars)))
             meta = res['ResponseMetadata']
-            logger_meta.debug(
+            logger.debug(
                 "authorize_security_group_policies::authorize_security_group_ingresss::meta::{}".format(meta))
         if "{}_egress.json.j2".format(sg_name) in listdir(self.sg_authorization_path):
             f = open("{}/{}_egress.json.j2".format(self.sg_authorization_path, sg_name))
@@ -88,7 +78,7 @@ class AwsSG(AwsBase):
                 GroupId=sg_id,
                 IpPermissions=json.loads(Template(data).render(jinja2_vars)))
             meta = res['ResponseMetadata']
-            logger_meta.debug(
+            logger.debug(
                 "authorize_security_group_policies::authorize_security_group_egresss::meta::{}".format(meta))
         self.refresh_security_groups()
 
@@ -101,14 +91,14 @@ class AwsSG(AwsBase):
                         GroupId=sg['GroupId'],
                         IpPermissions=sg['IpPermissions'])
                     meta = res['ResponseMetadata']
-                    logger_meta.debug(
+                    logger.debug(
                         "delete_security_groups::revoke_security_group_ingresss::meta::{}".format(meta))
                 if sg['IpPermissionsEgress']:
                     res = self.ec2_client.revoke_security_group_egress(
                         GroupId=sg['GroupId'],
                         IpPermissions=sg['IpPermissionsEgress'])
                     meta = res['ResponseMetadata']
-                    logger_meta.debug(
+                    logger.debug(
                         "delete_security_groups::revoke_security_group_egresss::meta::{}".format(meta))
                     self.ec2_client.delete_security_group(GroupId=sg['GroupId'])
             del(self['SecurityGroups'])
