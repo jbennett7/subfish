@@ -12,15 +12,17 @@ logging.basicConfig(level=logging.INFO)
 def create_env(aws):
     aws.create_vpc()
     aws.create_subnet()
+    aws.create_subnet()
     aws.create_route_table()
     aws.associate_rt_subnet()
     aws.create_internet_gateway()
     
     aws.create_subnet(affinity_group=1)
+    aws.create_subnet(affinity_group=1)
     aws.create_route_table(affinity_group=1)
     aws.associate_rt_subnet(affinity_group=1)
-#   aws.create_nat_gateway()
-#   aws.create_nat_default_route(rt_affinity_group=1)
+    aws.create_nat_gateway()
+    aws.create_nat_default_route(rt_affinity_group=1)
     aws.create_launch_template('HelloWorld')
     aws.create_security_group("bastion")
     aws.authorize_security_group_policies("bastion")
@@ -28,10 +30,9 @@ def create_env(aws):
     aws.run_instance("HelloWorld")
 
 
-
 def destroy_env(aws):
     aws.terminate_instances()
-#   aws.delete_nat_gateways()
+    aws.delete_nat_gateways()
     aws.delete_security_groups()
     aws.delete_launch_templates()
 
@@ -42,4 +43,5 @@ def destroy_env(aws):
 
 aws = Ec2(PATH, config_path='.')
 create_env(aws)
-destroy_env(aws)
+aws.create_autoscaling_group('basion', affinity_group
+#destroy_env(aws)

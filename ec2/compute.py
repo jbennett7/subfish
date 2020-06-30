@@ -128,10 +128,8 @@ class AwsCompute(AwsBase):
             {'Name': 'subnet-id', 'Values': subnet_ids}])
         meta = res['ResponseMetadata']
         data = res['Reservations']
-        logger.debug(
-            "run_instances::describe_instances::meta::{}".format(meta))
-        logger.debug(
-            "run_instances::describe_instances::data::{}".format(data))
+        logger.debug("run_instances::describe_instances::meta::%s", meta)
+        logger.debug("run_instances::describe_instances::data::%s", data)
         res = self.ec2_client.run_instances(LaunchTemplate={
             'LaunchTemplateName': instance_template},
             SecurityGroupIds=[sg_ids],
@@ -140,10 +138,8 @@ class AwsCompute(AwsBase):
             MaxCount=1)
         meta = res['ResponseMetadata']
         data = res['Instances']
-        logger.debug(
-            "run_instances::run_instances::meta::{}".format(meta))
-        logger.debug(
-            "run_instances::run_instances::data::{}".format(data))
+        logger.debug("run_instances::run_instances::meta::%s", meta)
+        logger.debug("run_instances::run_instances::data::{}", data)
         inst_id = [i['InstanceId'] for i in data]
         logger.info("run_instances::waiting for instance")
         waiter = self.ec2_client.get_waiter('instance_exists')
@@ -159,10 +155,8 @@ class AwsCompute(AwsBase):
             {'Name': 'vpc-id', 'Values': [vpc_id]}])
         meta = res['ResponseMetadata']
         data = res['Reservations'][0]
-        logger.debug(
-            "refresh_instances::run_instances::meta::{}".format(meta))
-        logger.debug(
-            "refresh_instances::run_instances::data::{}".format(data))
+        logger.debug("refresh_instances::run_instances::meta::%s", meta)
+        logger.debug("refresh_instances::run_instances::data::%s", data)
         self['Instances'] = data['Instances']
         self.save()
 
@@ -172,11 +166,35 @@ class AwsCompute(AwsBase):
         res = self.ec2_client.terminate_instances(InstanceIds=inst_id)
         meta = res['ResponseMetadata']
         data = res['TerminatingInstances']
-        logger.debug(
-            "terminate_instances::terminate_instances::meta::{}".format(meta))
-        logger.debug(
-            "terminate_instances::terminate_instances::data::{}".format(data))
+        logger.debug("terminate_instances::terminate_instances::meta::%s", meta)
+        logger.debug("terminate_instances::terminate_instances::data::{}", data)
         waiter = self.ec2_client.get_waiter('instance_terminated')
-        logger.info("terminate_instances::waiting for instances to terminate")
+        logger.info("terminate_instances::waiter::%s", inst_id
         waiter.wait(InstanceIds=inst_id)
+        self.save()
+
+
+    def create_autoscaling_group(self, instance_template, affinity_group=0):
+        logger.info("create_autoscaling_group::Executing")
+        vpc_id = self['Vpc']['VpcId']
+        azs = [s['AvailabilityZone'] for s in self['Subnets'] for t in s['Tags']\
+            if t['Key'] == 'affinity_group' and t['Value'] == str(affinity_group)]
+        res = self.ec2_client.create_auto_scaling_group(
+            AutoScalingGroupName=instance_template,
+            LaunchTemplate={
+                'LaunchTemplateName': instance_template,
+                'Version': '$Default'},
+            MinSize=1,
+            MaxSize=2,
+            DesiredCapacity=2,
+            AvailabilityZones=azs)
+        meta = res
+        logger.info("create_autoscaling_group::create_autoscaling_group::%s", meta)
+        res = self.ec2_client.describe_auto_scaling_group(Filters=[
+            {'Name': 'vpc-id', 'Values': [vpc_id]}])
+        meta = res['ResponseMetadata']
+        data = res['AvailabilityZones']
+        logger.info("create_autoscaling_group::describe_auto_scaling_group::%s", meta)
+        logger.info("create_autoscaling_group::describe_auto_scaling_group::%s", data)
+        self['AvailabilityZones'] = data
         self.save()
