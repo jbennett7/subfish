@@ -45,17 +45,17 @@ class AwsGW(AwsBase):
                             SubnetId=s['SubnetId'])
                         meta = res['ResponseMetadata']
                         logger.debug(
-                            "create_internet_gateway::attach_internet_gateway::meta::{}".format(meta))
+                            "create_internet_gateway::attach_internet_gateway::meta::%s", meta)
             res = self.ec2_client.create_tags(
                 Resources=[igw_id],
                 Tags=[{'Key': 'affinity_group', 'Value': str(affinity_group)}])
             meta = res['ResponseMetadata']
-            logger.debug("create_internet_gateway::create_tags::meta::{}".format(meta))
+            logger.debug("create_internet_gateway::create_tags::meta::%s", meta)
             self.refresh_route_tables()
             self.refresh_internet_gateway()
         except KeyError as k:
             if k.args[0] == 'Vpc':
-                logger.error("create_internet_gateway::KeyError::{}".format(k.args[0]))
+                logger.error("create_internet_gateway::KeyError::%s", k.args[0])
             else:
                 raise
         except ClientError as c:
