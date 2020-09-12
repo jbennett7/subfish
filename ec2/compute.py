@@ -169,7 +169,7 @@ class AwsCompute(AwsBase):
         logger.debug("terminate_instances::terminate_instances::meta::%s", meta)
         logger.debug("terminate_instances::terminate_instances::data::{}", data)
         waiter = self.ec2_client.get_waiter('instance_terminated')
-        logger.info("terminate_instances::waiter::%s", inst_id
+        logger.info("terminate_instances::waiter::%s", inst_id)
         waiter.wait(InstanceIds=inst_id)
         self.save()
 
