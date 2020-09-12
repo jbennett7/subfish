@@ -243,8 +243,9 @@ class AwsVpc(AwsBase):
             try:
                 waiter.wait(SubnetIds=[subnet_id])
             except WaiterError as w:
+                print(w.args)
                 logger.debug(
-                    "create_subnet::{}::waiter failed trying again...".format(w.message))
+                    "create_subnet::{}::waiter failed trying again...".format(w.args[0]))
                 self.sleep(i)
                 i=i+.1
                 continue
