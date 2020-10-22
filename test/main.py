@@ -1,7 +1,7 @@
 from os import getcwd, remove, listdir
 from sys import path
-path.append('/'.join(getcwd().split('/')[:-1]))
-
+path.append('/'.join(getcwd().split('/')[:-2]))
+print(path)
 from subfish.ec2 import Ec2
 #from subfish.iam import AwsIam
 #from subfish.eks import AwsEks
@@ -29,13 +29,8 @@ def destroy_env(aws):
     aws.delete_subnets()
     aws.delete_vpc()
 
-def cycle(aws):
-    for i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]:
-        for j in [1, 2, 3, 4, 5, 6, 7, 8, 9, 0]:
-            print("Try: {}{}".format(i, j))
-            create_env(aws)
-            destroy_env(aws)
-
 aws = Ec2(PATH, config_path='.')
-create_env(aws)
+#aws.create_launch_template('HelloWorld')
+#aws.delete_launch_templates()
+#create_env(aws)
 #destroy_env(aws)

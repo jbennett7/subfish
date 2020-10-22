@@ -9,6 +9,28 @@ from botocore.exceptions import ClientError, WaiterError
 logger = logging.getLogger(__name__)
 
 class AwsVpc(AwsBase):
+    """
+    AwsVpc object represents the methods used to build out an AWS VPC environment.
+
+    Methods:
+    __init__ - initialize
+    get_available_cidr_block - INTERNAL; returns an available cidr block to use for a subnet.
+    get_next_az - INTERNAL; returns next unused availability zone.
+    get_af_subnets - INTERNAL; returns the subnets associated with an affinity group.
+    get_at_rt - INTERNAL; returns the route tables associated with an affinity group.
+    get_af_ngw - INTERNAL; returns the NAT gateways associated with an affinity group.
+    create_vpc - USER; Creates a VPC with a cidr block.
+    refresh_vpc - INTERNAL; refreshes the dictionary with the VPC ID.
+    delete_vpc - USER; Deletes the VPC in the dictionary.
+    create_route_table - USER; creates a route table for an affinity group.
+    refresh_route_tables - INTERNAL; refreshes the dictionary with route tables associated with
+                                     the VPC.
+    associate_rt_subnet - INTERNAL; associate the route table with the subnet.
+    delete_route_tables - USER; delete all route tables in the dictionary.
+    create_subnet - USER; create a subnet for an affinity group.
+    refresh_subnets - INTERNAL; updates the dictionary with the subnets associated with the VPC.
+    delte_subnets - USER; deletes all subnets in the dictionary.
+    """
 
     def __init__(self, path, **kwargs):
         logger.debug("__init__::Executing")
