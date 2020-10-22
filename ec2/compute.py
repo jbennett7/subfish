@@ -1,6 +1,6 @@
 from subfish.base import AwsBase
 
-from os import listdir
+from os import listdir, remove
 import re, json
 from uuid import uuid1
 from jinja2 import Template
@@ -29,6 +29,15 @@ class AwsCompute(AwsBase):
         logger.info("create_launch_template::Executing")
         try:
             idemp_token = str(uuid1())
+            key_name = idemp_token
+            try:
+                res = self.ec2_client.create_key_pair(KeyName=key_name)
+                key_material = res['KeyMaterial']
+                f = open("./.instance_key-{}".format(key_name), 'w')
+                f.write(key_material)
+                jinja2_vars['key_name'] = key_name
+            except ClientError as c:
+                print(c)
             regex = re.compile(r'\.json\.j2')
             f = open("{}/{}.json.j2".format(self.launch_templates_path, launch_template_name))
             data = f.read()
@@ -104,6 +113,14 @@ class AwsCompute(AwsBase):
         logger.info("delete_launch_templates::Executing")
         try:
             for lt in self['LaunchTemplates']:
+                res = self.ec2_client.describe_launch_template_versions(
+                        LaunchTemplateId=lt['LaunchTemplateId'], Versions=['$Latest'])
+                key_name = res['LaunchTemplateVersions'][0]['LaunchTemplateData']['KeyName']
+                try:
+                    res = self.ec2_client.delete_key_pair(KeyName=key_name)
+                    remove("./.instance_key-{}".format(key_name))
+                except ClientError as c:
+                    print(c)
                 res = self.ec2_client.delete_launch_template(
                     LaunchTemplateId=lt['LaunchTemplateId'])
                 meta = res['ResponseMetadata']
@@ -116,7 +133,6 @@ class AwsCompute(AwsBase):
             self.save()
         except KeyError as k:
             logger.debug("delete_launch_templates::KeyError::%s", k.args[0])
-
 
     def run_instance(self, instance_template, affinity_group=0):
         logger.info("run_instance::Executing")
